@@ -11,7 +11,8 @@ if "%ERRORLEVEL%"=="0" (
     pause
 )
 
-set SOURCE="%~dp0ViveGrasshopperRecorder\bin\Release\net7.0-windows\ViveTcpRecorderV2.gha"
+set SOURCE="%~dp0ViveTcpRecorderV2.gha"
+if not exist %SOURCE% set SOURCE="%~dp0ViveGrasshopperRecorder\bin\Release\net7.0-windows\ViveTcpRecorderV2.gha"
 set DEST="%APPDATA%\Grasshopper\Libraries\ViveTcpRecorderV2.gha"
 
 echo Copying %SOURCE%

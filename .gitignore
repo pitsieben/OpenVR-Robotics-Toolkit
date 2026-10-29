@@ -23,8 +23,9 @@ __pycache__/
 env/
 venv/
 
-# Grasshopper library compiled outputs
-*.gha
+# Grasshopper library compiled outputs (ignore build subfolders, track ready-to-use root GHA)
+bin/**/ViveTcpRecorderV2.gha
+!/ViveTcpRecorderV2.gha
 !Resources/*.obj
 !Resources/*.b64
 !Resources/*.png

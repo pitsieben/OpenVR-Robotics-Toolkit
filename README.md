@@ -2,37 +2,58 @@
 
 A real-time tracking, calibration, and recording pipeline bridging **HTC Vive Trackers & Base Stations** (via SteamVR/OpenVR) directly into **Rhino & Grasshopper** over high-speed TCP.
 
-Built specifically for creative robotics, digital fabrication, tool tracking, and workshop research.
+Built specifically for creative robotics, digital fabrication, tool tracking, and workshop teaching.
 
 ---
 
-## What This Repository Contains
+## Quick Start for Students (No Building Required)
 
-1. **`ViveTcpPublisher`**  
-   A standalone C# console application that talks to SteamVR / OpenVR. It streams 6-DoF poses, tracking status, and pogo-pin button/trigger inputs over a local TCP socket (`127.0.0.1:7000`) as clean JSON packets at up to 90 Hz.
-2. **`ViveGrasshopperRecorder` (`ViveTcpRecorderV2.gha`)**  
-   A Grasshopper plugin for Rhino 7 and Rhino 8 providing a modular suite of **6 dedicated components**:
-   - **Vive TCP Listener V2** (`Vive > TCP`)
-   - **Vive Tracker** (`Vive > Tracking Device`)
-   - **Vive Lighthouse** (`Vive > Tracking Device`)
-   - **Tool Center Point (TCP)** (`Vive > Calibration`)
-   - **Vive Take Recorder** (`Vive > TCP`)
-   - **Vive Calibration Recorder** (`Vive > TCP`)
-3. **Headless SteamVR Utilities**  
-   PowerShell scripts to configure SteamVR to track Vive Trackers **without needing a VR Headset (HMD)** connected.
-4. **Offline Simulator (`dummy_sender.py`)**  
-   Simulates 1 tracker and 4 corner base stations along circle/spiral/wave trajectories with trigger toggling so students can test definitions without hardware.
+Students **do not** need to install .NET SDK or compile any code. A ready-to-use Grasshopper plugin (`ViveTcpRecorderV2.gha`) is included right in the root folder of this repository.
+
+### 1. Install the Grasshopper Plugin
+1. Close Rhino if it is open.
+2. In this folder, double-click **`copy_gha_to_grasshopper.bat`**.  
+   *(Or manually copy `ViveTcpRecorderV2.gha` into `%APPDATA%\Grasshopper\Libraries\`)*.
+3. Open Rhino and launch Grasshopper. You will see a new tab in the ribbon named **Vive**.
+
+### 2. Start Streaming (Choose One)
+
+- **If using real Vive Trackers (Without a VR Headset)**:
+  1. Close SteamVR.
+  2. Right-click **`enable_headless_trackers.ps1`** and choose **Run with PowerShell** (enables tracking without a headset).
+  3. Start SteamVR from Steam and turn on your tracker (LED should turn solid green).
+  4. Run **`ViveTcpPublisher\publish-win-x64\Launch_ViveTcpPublisher.bat`** (or `ViveTcpPublisher.exe`) and choose option `[2]`.
+- **If testing without hardware (Offline Simulator)**:
+  1. Double-click **`run_dummy_sender.bat`**.
+  2. This immediately starts streaming simulated tracker motion and 4 corner base stations on port 7000.
+
+### 3. Connect in Grasshopper
+1. Place **Vive TCP Listener V2** (`Vive > TCP`) on your canvas.
+2. Connect a **Boolean Toggle** to `AutoUpdate` and set it to **True**.
+3. Place a **Vive Tracker** component (`Vive > Tracking Device`) and connect `Vive` from the listener to `Vive` on the tracker.
 
 ---
 
-## Component Suite Reference
+## Grasshopper Component Suite Overview
+
+| Component | Ribbon Subcategory | Primary Role | Key Inputs | Key Outputs |
+| :--- | :--- | :--- | :--- | :--- |
+| **Vive TCP Listener V2** | `Vive > TCP` | Upstream network receiver; streams poses from publisher at a smooth, rate-limited 50 FPS. | `AutoUpdate` (bool)<br>`IP` (string, default: `127.0.0.1:7000`) | `Msg` (status text)<br>`Vive` (core context)<br>`Plane` (Rhino Z-up)<br>`Time` (timestamp) |
+| **Vive Tracker** | `Vive > Tracking Device` | Extracts live tracker pose, transforms custom tool meshes, and exposes trigger/pogo-pin states. | `Vive` (context)<br>`Index` (int, default `0`)<br>`Mesh` (custom tool geometry at `0,0,0`) | `Tracker` (3D geometry)<br>`Plane` (Z-up plane)<br>`Matrix` (4x4 Transform)<br>`TrackerData` (payload)<br>`Trigger` (bool) |
+| **Vive Lighthouse** | `Vive > Tracking Device` | Displays base station position, 3D model, and optical beam emission plane. Auto-increments from LH1 to LH4. | `Vive` (context)<br>`Index` (optional int override) | `Lighthouse` (3D geometry)<br>`Plane` (beam direction)<br>`Matrix` (4x4 Transform) |
+| **Tool Center Point** | `Vive > Calibration` | Calculates the tool tip ($p_F$) and stationary pivot point ($P_B$) from 4+ tracker poses using least-squares fitting. | `Poses` (list of at least 4 calibration planes) | `TCP_Relative` ($p_F$ in tool frame)<br>`TCP` (tip in world coordinates)<br>`FixedPoint` ($P_B$ world pivot)<br>`Residual` (RMS error in mm) |
+| **Vive Take Recorder** | `Vive > TCP` | Continuous trajectory recorder. Records takes inside a Brep volume or on physical trigger press. | `Data` (Plane or `TrackerData`)<br>`Brep` (working volume)<br>`Record` (master switch)<br>`Tolerance` (min distance in mm) | `Takes` (DataTree `{dev; take; frame}`)<br>`TakeCount` (int)<br>`FrameCount` (int)<br>`IsInside` (bool) |
+| **Vive Calibration Recorder** | `Vive > TCP` | Point-by-point calibration recorder. Captures points on software button press or via physical tracker pogo pin switch. | `Data` (Plane or `TrackerData`)<br>`Record` (capture button)<br>`Reset` (clear button)<br>`Undo` (remove last button) | `Planes` (list of calibration planes)<br>`Points` (list of origin points)<br>`Tree` (DataTree `{point_idx}`)<br>`Count` (int) |
+
+---
+
+## Detailed Component Specifications
 
 ### 1. Vive TCP Listener V2 (`ViveListener`)
-Main upstream network receiver. Streams OpenVR tracking poses for all connected devices (trackers, base stations, controllers) over TCP with a built-in 50 FPS rate limiter to keep the Rhino viewport smooth.
+Main upstream receiver connecting directly to `ViveTcpPublisher.exe` or `dummy_sender.py`. Includes an internal high-resolution throttle (50 FPS) to prevent Rhino viewport redraw lag.
 
-- **Category**: `Vive > TCP`
 - **Inputs**:
-  - `AutoUpdate` (`A`, bool): Connect to a Toggle. Set to `True` to connect and stream live tracking data.
+  - `AutoUpdate` (`A`, bool): Connect to a Toggle. Set to `True` to stream live tracking data.
   - `IP` (`IP`, string, optional): Publisher endpoint (default: `127.0.0.1:7000`).
 - **Outputs**:
   - `Msg` (`Msg`, string): Live connection info and summary of detected devices.
@@ -45,11 +66,10 @@ Main upstream network receiver. Streams OpenVR tracking poses for all connected 
 ### 2. Vive Tracker (`Tracker`)
 Extracts the tracker plane, rigid transformation matrix, 3D geometry representation, custom tool meshes, and physical button/trigger data for any selected tracker index.
 
-- **Category**: `Vive > Tracking Device`
 - **Inputs**:
-  - `Vive` (`V`, Generic): Connect from the `Vive` output of `Vive TCP Listener` (or original `ViveTrack`).
+  - `Vive` (`V`, Generic): Connect from the `Vive` output of `Vive TCP Listener`.
   - `Index` (`I`, int, default `0`): Tracker index (`0` for first tracker, `1` for second, etc.).
-  - `Mesh` (`M`, Geometry, optional): Custom tool geometry modeled at `(0, 0, 0)`.
+  - `Mesh` (`M`, Geometry, optional): Custom tool geometry modeled in Rhino at `(0, 0, 0)`.
 - **Outputs**:
   - `Tracker` (`T`, Geometry): 3D model of the HTC Vive Tracker 3.0 or your transformed custom tool mesh.
   - `Plane` (`P`, Plane): Rhino plane with **Z facing UP** out of the tracker dome (pre-rotated by 90° around X for direct viewport alignment).
@@ -64,7 +84,6 @@ Extracts the tracker plane, rigid transformation matrix, 3D geometry representat
 ### 3. Vive Lighthouse (`Lighthouse`)
 Extracts the pose, beam aiming direction, and 3D geometry of HTC Vive Lighthouse base stations.
 
-- **Category**: `Vive > Tracking Device`
 - **Auto-Incrementing Instances**: Every time you place a new `Vive Lighthouse` component onto the canvas, it automatically detects existing lighthouse components and assigns the next index (`Lighthouse1` -> `Lighthouse2` -> `Lighthouse3` -> `Lighthouse4`).
 - **Inputs**:
   - `Vive` (`V`, Generic): Connect from the `Vive` output of `Vive TCP Listener`.
@@ -81,7 +100,6 @@ Extracts the pose, beam aiming direction, and 3D geometry of HTC Vive Lighthouse
 ### 4. Tool Center Point (`TCP`)
 Calculates the Tool Center Point (tip) and fixed pivot point using least-squares calibration from at least 4 flange/tracker poses touching a common stationary pivot tip from different angles.
 
-- **Category**: `Vive > Calibration`
 - **Inputs**:
   - `Poses` (`P`, List of Plane): At least 4 diverse tracker poses touching the pivot tip at different orientations.
 - **Outputs**:
@@ -97,7 +115,6 @@ Calculates the Tool Center Point (tip) and fixed pivot point using least-squares
 ### 5. Vive Take Recorder (`ViveTakes`)
 Records continuous trajectory takes while the tracker is inside a designated Brep working volume, or on a physical trigger switch press.
 
-- **Category**: `Vive > TCP`
 - **Inputs**:
   - `Data` (`D`, Tree): Tracker plane or `TrackerData` to record.
   - `Brep` (`B`, Brep, optional): Working volume Brep. Recording automatically occurs while inside this volume.
@@ -119,7 +136,6 @@ Records continuous trajectory takes while the tracker is inside a designated Bre
 ### 6. Vive Calibration Recorder (`ViveCalib`)
 Captures single calibration poses on a Grasshopper Button press (rising edge) or directly via the physical pogo-pin trigger switch, with Undo and Reset functions.
 
-- **Category**: `Vive > TCP`
 - **Inputs**:
   - `Data` (`D`, Tree): Current tracker plane or `TrackerData`.
   - `Record` (`R`, bool): Connect to a Grasshopper Button (captures on rising edge).
@@ -131,86 +147,6 @@ Captures single calibration poses on a Grasshopper Button press (rising edge) or
   - `Tree` (`T`, Tree): DataTree of all recorded frames structured as `{Point_Index}`.
   - `Count` (`N`, int): Number of calibration points recorded.
   - `Status` (`S`, string): Calibration recording status.
-
----
-
-## Hardware Requirements
-
-- **HTC Vive Tracker** (2.0 or 3.0) + USB wireless dongle.
-- **HTC Vive Base Stations / Lighthouses** (1.0 or 2.0, at least 1 or 2 stations).
-- Windows 10 or 11 (64-bit).
-- **Rhino 7 or Rhino 8** with Grasshopper.
-- **Steam & SteamVR** installed.
-- *(Optional)* A VR headset. If you do not have a headset, use the included **Headless Mode** script.
-
----
-
-## Step-by-Step Tutorial for Students
-
-### Step 1: Install Prerequisites
-
-1. Ensure **Steam** and **SteamVR** are installed on your machine.
-2. Ensure **.NET 8.0 Runtime** (or SDK) is installed. If needed, download the free x64 installer from [Microsoft .NET download](https://dotnet.microsoft.com/download/dotnet/8.0).
-3. If building from source, install [.NET 8 SDK](https://dotnet.microsoft.com/download) and [.NET 7 SDK](https://dotnet.microsoft.com/download/dotnet/7.0).
-
----
-
-### Step 2: Build and Install the Grasshopper Plugin
-
-1. Close Rhino if it is currently open.
-2. Double-click **`build_all.bat`** in the repository root. This compiles the publisher and the Grasshopper `.gha` file.
-3. Double-click **`copy_gha_to_grasshopper.bat`**. This automatically copies `ViveTcpRecorderV2.gha` into:
-   ```
-   %APPDATA%\Grasshopper\Libraries\ViveTcpRecorderV2.gha
-   ```
-4. Open Rhino and launch Grasshopper. You will see a new tab in the ribbon named **Vive**.
-
----
-
-### Step 3: Run Without a VR Headset (Headless Mode)
-
-If you are using Vive Trackers without a VR headset:
-
-1. Close SteamVR.
-2. Right-click **`enable_headless_trackers.ps1`** and choose **Run with PowerShell** (or run it in a PowerShell terminal).
-   - This enables SteamVR's virtual `null` driver and sets `requireHmd: false`.
-3. Launch SteamVR from Steam. SteamVR will initialize without complaining about a missing headset.
-4. Turn on your Vive Tracker and make sure its LED turns solid green (paired and tracking).
-
-*(Note: To revert SteamVR back to standard headset mode later, run `restore_steamvr_settings.ps1`).*
-
----
-
-### Step 4: Start Streaming Tracking Data
-
-#### Option A: Using Real Vive Hardware
-1. Make sure SteamVR is running and the tracker light is green.
-2. Go to `ViveTcpPublisher\publish-win-x64\` and double-click **`Launch_ViveTcpPublisher.bat`** (or run `ViveTcpPublisher.exe`).
-3. Press `[1]` to list connected devices and verify your tracker is detected.
-4. Press `[2]` to start streaming on `127.0.0.1:7000`.
-
-#### Option B: Offline Simulator (No Hardware Needed)
-If you are working remotely or do not have tracker hardware:
-1. Double-click **`run_dummy_sender.bat`**.
-2. A terminal window will open streaming simulated poses and 4 corner base stations on port `7000`.
-
----
-
-### Step 5: Typical Canvas Setup in Grasshopper
-
-#### Basic Live Tracking Workflow:
-1. Place **Vive TCP Listener V2** (`Vive > TCP`).
-2. Attach a **Boolean Toggle** to `AutoUpdate` and set it to `True`.
-3. Place a **Vive Tracker** component (`Vive > Tracking Device`). Connect the `Vive` output from the Listener to the `Vive` input on the Tracker.
-4. Place one or more **Vive Lighthouse** components (`Vive > Tracking Device`). Connect `Vive` to inspect base station positions in Rhino.
-
-#### TCP Calibration Workflow:
-1. Place **Vive Calibration Recorder** (`Vive > TCP`).
-2. Connect `TrackerData` from `Vive Tracker` into `Data`.
-3. Connect a Grasshopper Button to `Record` (or simply click your physical pogo-pin button on the tool tip).
-4. Take at least 4 poses touching a stationary point from different angles.
-5. Connect `Planes` from `Vive Calibration Recorder` directly into `Poses` on **Tool Center Point** (`Vive > Calibration`).
-6. Inspect `TCP_Relative` ($p_F$) and `Residual` (RMS fitting error in mm).
 
 ---
 
@@ -254,31 +190,45 @@ On the underside of the Vive Tracker are 6 gold contact pads (pogo pins). Connec
 
 ---
 
+## Typical Canvas Workflows
+
+### Live Tracking Workflow
+```
+[Toggle: True] ---> (AutoUpdate) [Vive TCP Listener V2]
+                                 (Vive) ----+-----> (Vive) [Vive Tracker] ---> Plane, Matrix, Model
+                                            |
+                                            +-----> (Vive) [Vive Lighthouse (LH1)] ---> Plane, Model
+                                            |
+                                            +-----> (Vive) [Vive Lighthouse (LH2)] ---> Plane, Model
+```
+
+### TCP Calibration Workflow
+```
+[Vive Tracker] (TrackerData) ---> (Data) [Vive Calibration Recorder]
+[GH Button] --------------------> (Record)
+                                         (Planes) ---> (Poses) [Tool Center Point]
+                                                                (TCP_Relative) -> Point
+                                                                (Residual)     -> Error mm
+```
+
+---
+
 ## Repository Structure
 
 ```
-├── ViveGrasshopperRecorder/        # C# source for Grasshopper plugin (.gha)
-│   ├── Resources/                  # Embedded icons, OBJ models, and meshes
-│   ├── ViveTcpRecorderComponentV2.cs
-│   ├── ViveTrackerComponent.cs
-│   ├── ViveLighthouseComponent.cs
-│   ├── ViveToolCenterPointComponent.cs
-│   ├── ViveTakeRecorderComponent.cs
-│   ├── ViveCalibrationRecorderComponent.cs
-│   ├── ViveTrackData.cs
-│   └── ViveTrackerData.cs
-├── ViveTcpPublisher/               # C# OpenVR TCP server
-│   ├── Native/win-x64/             # openvr_api.dll
-│   ├── OpenVrBindings.cs           # C# OpenVR interop definitions
-│   └── Program.cs                  # Publisher server logic
-├── copy_gha_to_grasshopper.bat     # Deploys GHA to Grasshopper libraries
-├── build_all.bat                   # Builds plugin and publisher
-├── enable_headless_trackers.ps1    # Configures SteamVR for no-HMD tracking
+├── ViveTcpRecorderV2.gha           # Ready-to-use Grasshopper plugin file (install via batch script)
+├── copy_gha_to_grasshopper.bat     # One-click installer for ViveTcpRecorderV2.gha
+├── ViveTcpPublisher/               # SteamVR OpenVR TCP server
+│   └── publish-win-x64/            # Standalone launcher and binaries
+│       ├── Launch_ViveTcpPublisher.bat
+│       └── ViveTcpPublisher.exe
+├── ViveGrasshopperRecorder/        # C# source code for the Grasshopper plugin
+├── enable_headless_trackers.ps1    # Configures SteamVR for tracking without a VR headset
 ├── restore_steamvr_settings.ps1    # Restores default SteamVR settings
-├── dummy_sender.py                 # Offline simulator script
+├── dummy_sender.py                 # Offline simulator (no hardware needed)
 ├── run_dummy_sender.bat            # Launches 1 simulated tracker
 ├── run_two_dummy_senders.bat       # Launches 2 simulated trackers
-└── .gitignore                      # Git ignore rules for build artifacts
+└── build_all.bat                   # Optional build script for developers
 ```
 
 ---
