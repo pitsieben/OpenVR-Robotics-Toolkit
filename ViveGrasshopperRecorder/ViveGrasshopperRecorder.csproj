@@ -1,0 +1,51 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net7.0-windows</TargetFramework>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>ViveTcpRecorderV2</AssemblyName>
+    <TargetExt>.gha</TargetExt>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <DebugType>embedded</DebugType>
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <RhinoSystemDir Condition="'$(RhinoSystemDir)' == ''">C:\Program Files\Rhino 8\System</RhinoSystemDir>
+    <GrasshopperDir Condition="'$(GrasshopperDir)' == ''">C:\Program Files\Rhino 8\Plug-ins\Grasshopper</GrasshopperDir>
+    <SystemDrawingCommonPath Condition="'$(SystemDrawingCommonPath)' == ''">$(USERPROFILE)\.nuget\packages\microsoft.windowsdesktop.app.ref\7.0.20\ref\net7.0\System.Drawing.Common.dll</SystemDrawingCommonPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Resources\Listener.png" LogicalName="ViveTcpRecorder.Resources.Listener.png" />
+    <EmbeddedResource Include="Resources\TakeRecorder.png" LogicalName="ViveTcpRecorder.Resources.TakeRecorder.png" />
+    <EmbeddedResource Include="Resources\CalibrationRecorder.png" LogicalName="ViveTcpRecorder.Resources.CalibrationRecorder.png" />
+    <EmbeddedResource Include="Resources\ObjTracker.png" LogicalName="ViveTcpRecorder.Resources.ObjTracker.png" />
+    <EmbeddedResource Include="Resources\ObjLighthouse1.png" LogicalName="ViveTcpRecorder.Resources.ObjLighthouse1.png" />
+    <EmbeddedResource Include="Resources\ObjLighthouse2.png" LogicalName="ViveTcpRecorder.Resources.ObjLighthouse2.png" />
+    <EmbeddedResource Include="Resources\ObjLighthouse3.png" LogicalName="ViveTcpRecorder.Resources.ObjLighthouse3.png" />
+    <EmbeddedResource Include="Resources\ObjLighthouse4.png" LogicalName="ViveTcpRecorder.Resources.ObjLighthouse4.png" />
+    <EmbeddedResource Include="Resources\ViveStart.png" LogicalName="ViveTcpRecorder.Resources.ViveStart.png" />
+    <EmbeddedResource Include="Resources\Calibration.png" LogicalName="ViveTcpRecorder.Resources.Calibration.png" />
+    <EmbeddedResource Include="Resources\vr_tracker_vive_3_0.obj" LogicalName="ViveTcpRecorder.Resources.vr_tracker_vive_3_0.obj" />
+    <EmbeddedResource Include="Resources\lighthouse.b64" LogicalName="ViveTcpRecorder.Resources.lighthouse.b64" />
+    <Reference Include="System.Drawing.Common">
+      <HintPath>$(SystemDrawingCommonPath)</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="RhinoCommon">
+      <HintPath>$(RhinoSystemDir)\RhinoCommon.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Grasshopper">
+      <HintPath>$(GrasshopperDir)\Grasshopper.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="GH_IO">
+      <HintPath>$(GrasshopperDir)\GH_IO.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+</Project>

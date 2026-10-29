@@ -1,0 +1,39 @@
+## Build artifacts
+bin/
+obj/
+publish/
+publish-win-x64/
+
+# Keep the distribution launcher and logo if needed, but ignore build binaries
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.dll
+*.pdb
+*.exe
+!openvr_api.dll
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.env
+.venv/
+env/
+venv/
+
+# Grasshopper library compiled outputs
+*.gha
+!Resources/*.obj
+!Resources/*.b64
+!Resources/*.png
+
+# IDE / System
+.vs/
+.vscode/
+.idea/
+Thumbs.db
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.bak
