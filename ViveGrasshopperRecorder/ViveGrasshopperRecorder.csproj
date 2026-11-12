@@ -15,7 +15,6 @@
   <PropertyGroup>
     <RhinoSystemDir Condition="'$(RhinoSystemDir)' == ''">C:\Program Files\Rhino 8\System</RhinoSystemDir>
     <GrasshopperDir Condition="'$(GrasshopperDir)' == ''">C:\Program Files\Rhino 8\Plug-ins\Grasshopper</GrasshopperDir>
-    <SystemDrawingCommonPath Condition="'$(SystemDrawingCommonPath)' == ''">$(USERPROFILE)\.nuget\packages\microsoft.windowsdesktop.app.ref\7.0.20\ref\net7.0\System.Drawing.Common.dll</SystemDrawingCommonPath>
   </PropertyGroup>
 
   <ItemGroup>
@@ -31,10 +30,6 @@
     <EmbeddedResource Include="Resources\Calibration.png" LogicalName="ViveTcpRecorder.Resources.Calibration.png" />
     <EmbeddedResource Include="Resources\vr_tracker_vive_3_0.obj" LogicalName="ViveTcpRecorder.Resources.vr_tracker_vive_3_0.obj" />
     <EmbeddedResource Include="Resources\lighthouse.b64" LogicalName="ViveTcpRecorder.Resources.lighthouse.b64" />
-    <Reference Include="System.Drawing.Common">
-      <HintPath>$(SystemDrawingCommonPath)</HintPath>
-      <Private>false</Private>
-    </Reference>
     <Reference Include="RhinoCommon">
       <HintPath>$(RhinoSystemDir)\RhinoCommon.dll</HintPath>
       <Private>false</Private>

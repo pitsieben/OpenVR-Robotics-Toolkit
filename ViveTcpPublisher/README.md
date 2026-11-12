@@ -27,4 +27,4 @@ For Rhino millimetres and Z-up, map a point as `(X, -Z, Y) × 1000`. Use the map
 
 ## Distribution
 
-The `publish-win-x64` folder is built as a self-contained, single executable and includes the OpenVR runtime DLL. Users do not need a .NET installation or the OpenVR SDK, but they must install SteamVR and the device drivers required for their tracker.
+The `publish-win-x64` folder (included in the repo) is built as a self-contained, single executable and includes the OpenVR runtime DLL. Users do not need a .NET installation or the OpenVR SDK, but they must install SteamVR and the device drivers required for their tracker.

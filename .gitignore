@@ -2,7 +2,11 @@
 bin/
 obj/
 publish/
-publish-win-x64/
+publish-win-x64/*
+!ViveTcpPublisher/publish-win-x64/
+!ViveTcpPublisher/publish-win-x64/ViveTcpPublisher.exe
+!ViveTcpPublisher/publish-win-x64/Launch_ViveTcpPublisher.bat
+!ViveTcpPublisher/publish-win-x64/ViveTcpPublisher_logo.png
 
 # Keep the distribution launcher and logo if needed, but ignore build binaries
 *.user
@@ -13,6 +17,7 @@ publish-win-x64/
 *.pdb
 *.exe
 !openvr_api.dll
+!ViveTcpPublisher/publish-win-x64/ViveTcpPublisher.exe
 
 # Python
 __pycache__/

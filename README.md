@@ -1,36 +1,102 @@
-# ViveOpenVR-Grasshopper
+# OpenVR Robotics Toolkit
 
-A real-time tracking, calibration, and recording pipeline bridging **HTC Vive Trackers & Base Stations** (via SteamVR/OpenVR) directly into **Rhino & Grasshopper** over high-speed TCP.
+Stream **HTC Vive Trackers and Lighthouse base stations** (via SteamVR / OpenVR) live into **Rhino 8 + Grasshopper** for robotics, digital fabrication, tool tracking, motion capture and workshop teaching.
 
-Built specifically for creative robotics, digital fabrication, tool tracking, and workshop teaching.
+```
+ Vive Tracker ──► SteamVR ──► ViveTcpPublisher.exe ──TCP :7000──► Grasshopper (Vive tab)
+                              (or dummy_sender.py for offline testing)
+```
+
+Everything you need to run it is in this repository. **You don't need to compile anything.**
+
+| File | What it is |
+| :--- | :--- |
+| `ViveTcpRecorderV2.gha` | The Grasshopper plugin, ready to install |
+| `Grasshopper/ViveTracking_Template.gh` | Template definition with the components already wired |
+| `ViveTcpPublisher/publish-win-x64/ViveTcpPublisher.exe` | Standalone SteamVR → TCP streamer (doesn't need .NET installed) |
+| `dummy_sender.py` | Simulator that streams fake tracker data, so you can test without hardware |
 
 ---
 
-## Quick Start for Students (No Building Required)
+## Getting Started
 
-Students **do not** need to install .NET SDK or compile any code. A ready-to-use Grasshopper plugin (`ViveTcpRecorderV2.gha`) is included right in the root folder of this repository.
+### 0. Requirements
 
-### 1. Install the Grasshopper Plugin
-1. Close Rhino if it is open.
-2. In this folder, double-click **`copy_gha_to_grasshopper.bat`**.  
-   *(Or manually copy `ViveTcpRecorderV2.gha` into `%APPDATA%\Grasshopper\Libraries\`)*.
-3. Open Rhino and launch Grasshopper. You will see a new tab in the ribbon named **Vive**.
+| Need | Live tracking | Offline simulator |
+| :--- | :---: | :---: |
+| Windows 10/11 (64-bit) | ✅ | ✅ |
+| Rhino 8 | ✅ | ✅ |
+| Steam + SteamVR | ✅ | — |
+| Vive Tracker (2.0 / 3.0) + dongle, 1–4 base stations | ✅ | — |
+| Python 3.8+ (standard library only) | — | ✅ |
 
-### 2. Start Streaming (Choose One)
+### 1. Download the repository
 
-- **If using real Vive Trackers (Without a VR Headset)**:
-  1. Close SteamVR.
-  2. Right-click **`enable_headless_trackers.ps1`** and choose **Run with PowerShell** (enables tracking without a headset).
-  3. Start SteamVR from Steam and turn on your tracker (LED should turn solid green).
-  4. Run **`ViveTcpPublisher\publish-win-x64\Launch_ViveTcpPublisher.bat`** (or `ViveTcpPublisher.exe`) and choose option `[2]`.
-- **If testing without hardware (Offline Simulator)**:
-  1. Double-click **`run_dummy_sender.bat`**.
-  2. This immediately starts streaming simulated tracker motion and 4 corner base stations on port 7000.
+Click **Code ▸ Download ZIP** on GitHub and extract it, or clone it:
 
-### 3. Connect in Grasshopper
-1. Place **Vive TCP Listener V2** (`Vive > TCP`) on your canvas.
-2. Connect a **Boolean Toggle** to `AutoUpdate` and set it to **True**.
-3. Place a **Vive Tracker** component (`Vive > Tracking Device`) and connect `Vive` from the listener to `Vive` on the tracker.
+```bash
+git clone https://github.com/pitsieben/OpenVR-Robotics-Toolkit.git
+```
+
+> **ZIP download:** right-click the `.zip` ▸ **Properties** ▸ tick **Unblock** *before* you extract it. Otherwise Windows may block the `.gha` and `.exe`.
+
+### 2. Install the Grasshopper plugin
+
+1. Close Rhino.
+2. Double-click **`copy_gha_to_grasshopper.bat`**. It copies `ViveTcpRecorderV2.gha` into `%APPDATA%\Grasshopper\Libraries\`.
+   *(To do it by hand instead: in Grasshopper, open **File ▸ Special Folders ▸ Components Folder** and drop the `.gha` there.)*
+3. Start Rhino and type `Grasshopper`. A new **Vive** tab appears in the ribbon.
+
+No Vive tab? Right-click the `.gha` in the Libraries folder ▸ **Properties** ▸ **Unblock**, then restart Rhino.
+
+### 3. Start a data stream
+
+Choose **A** (real hardware) or **B** (no hardware).
+
+#### A: Real Vive Trackers
+
+1. **Pair the tracker (one time only):** start SteamVR and plug in the tracker dongle. Choose *SteamVR menu ▸ Devices ▸ Pair Controller*, then hold the tracker's power button until the LED blinks blue.
+2. **Track without a headset (optional):** close SteamVR. Right-click **`enable_headless_trackers.ps1`** ▸ **Run with PowerShell**. This turns on SteamVR's *null* driver, so SteamVR no longer requires a headset. To undo it later, run `restore_steamvr_settings.ps1`.
+   - If PowerShell won't run scripts, run this once: `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`
+3. Start SteamVR and switch on the base stations and the tracker. In SteamVR, the tracker icon must be **solid** (not blinking). The LED on the tracker must be **green**.
+4. Run **`ViveTcpPublisher\publish-win-x64\Launch_ViveTcpPublisher.bat`**:
+   - `[1]` lists the connected devices and their serial numbers.
+   - `[2]` streams every device on `127.0.0.1:7000`.
+   Leave this window open while you work.
+
+To run it from the command line: `ViveTcpPublisher.exe [--serial SERIAL] [--host 127.0.0.1] [--port 7000] [--rate 90]`
+
+#### B: Offline simulator (no hardware)
+
+Double-click **`run_dummy_sender.bat`**. It simulates one moving tracker and four base stations on port 7000. For two trackers, use **`run_two_dummy_senders.bat`**.
+You need `python` on your PATH: install it from python.org and tick *Add Python to PATH* during setup.
+
+### 4. Open the template
+
+1. In Grasshopper, choose **File ▸ Open** ▸ `Grasshopper/ViveTracking_Template.gh`.
+2. Set the **AutoUpdate** toggle on the *Vive TCP Listener V2* to **True**.
+3. The listener's `Msg` output lists the connected devices. The tracker and the lighthouses show up in the Rhino viewport and move live.
+
+Before you change the template, save a copy under a new name.
+
+### 5. Build your own definition from scratch
+
+1. Place **Vive TCP Listener V2** (`Vive ▸ TCP`). Connect a **Boolean Toggle** to `AutoUpdate` and set it to `True`.
+2. Place **Vive Tracker** (`Vive ▸ Tracking Device`). Wire the listener's `Vive` output to the tracker's `Vive` input. For more than one tracker, set `Index` to 0, 1, and so on.
+3. Optional: add **Vive Lighthouse** components. Each new one numbers itself automatically (LH1 to LH4).
+4. Use the tracker's `Plane` / `Matrix` outputs to drive geometry, robot targets and so on.
+
+### Troubleshooting
+
+| Problem | Fix |
+| :--- | :--- |
+| No **Vive** tab in Grasshopper | Windows has blocked the `.gha`. Unblock it (see step 2) and restart Rhino. |
+| Listener says *not connected* | The publisher or simulator isn't running, or the port doesn't match. Check that `IP` is `127.0.0.1:7000`. |
+| Publisher lists no trackers | SteamVR isn't running, the tracker isn't paired, or the base stations can't see it (icon blinking). |
+| SteamVR asks for a headset | Close SteamVR and run `enable_headless_trackers.ps1`. |
+| `run_dummy_sender.bat` closes straight away | Python isn't installed or isn't on PATH. |
+| Port 7000 is already in use | Only one publisher or simulator can use a port. Close the other one, or pick another port with `--port`. |
+| The copy script fails | Rhino is still running. Close it completely and try again. |
 
 ---
 
@@ -213,27 +279,39 @@ On the underside of the Vive Tracker are 6 gold contact pads (pogo pins). Connec
 
 ---
 
+## Building from Source (developers)
+
+You need the **.NET 8 SDK** and **Rhino 8** in its default install location. Then run:
+
+```bash
+build_all.bat
+```
+
+This builds the plugin to `ViveGrasshopperRecorder\bin\Release\net7.0-windows\ViveTcpRecorderV2.gha`. It also publishes a self-contained `ViveTcpPublisher.exe` to `ViveTcpPublisher\publish-win-x64\`. If Rhino is installed somewhere else, pass `-p:RhinoSystemDir=... -p:GrasshopperDir=...` to `dotnet build`. To update the plugin that ships with the repo, copy the new `.gha` to the repo root.
+
+[ViveTcpPublisher/README.md](ViveTcpPublisher/README.md) documents the TCP packet format.
+
 ## Repository Structure
 
 ```
-├── ViveTcpRecorderV2.gha           # Ready-to-use Grasshopper plugin file (install via batch script)
-├── copy_gha_to_grasshopper.bat     # One-click installer for ViveTcpRecorderV2.gha
-├── ViveTcpPublisher/               # SteamVR OpenVR TCP server
-│   └── publish-win-x64/            # Standalone launcher and binaries
+├── ViveTcpRecorderV2.gha            # Grasshopper plugin, ready to install
+├── copy_gha_to_grasshopper.bat      # One-click plugin installer
+├── Grasshopper/
+│   └── ViveTracking_Template.gh     # Starter Grasshopper definition
+├── ViveTcpPublisher/                # SteamVR/OpenVR → TCP streamer (C#)
+│   └── publish-win-x64/
 │       ├── Launch_ViveTcpPublisher.bat
-│       └── ViveTcpPublisher.exe
-├── ViveGrasshopperRecorder/        # C# source code for the Grasshopper plugin
-├── enable_headless_trackers.ps1    # Configures SteamVR for tracking without a VR headset
-├── restore_steamvr_settings.ps1    # Restores default SteamVR settings
-├── dummy_sender.py                 # Offline simulator (no hardware needed)
-├── run_dummy_sender.bat            # Launches 1 simulated tracker
-├── run_two_dummy_senders.bat       # Launches 2 simulated trackers
-└── build_all.bat                   # Optional build script for developers
+│       └── ViveTcpPublisher.exe     # Self-contained; doesn't need .NET installed
+├── ViveGrasshopperRecorder/         # Grasshopper plugin source (C#)
+├── enable_headless_trackers.ps1     # Lets SteamVR track without a headset
+├── restore_steamvr_settings.ps1     # Undoes the headless setup
+├── dummy_sender.py                  # Offline simulator
+├── run_dummy_sender.bat             # 1 simulated tracker
+├── run_two_dummy_senders.bat        # 2 simulated trackers
+└── build_all.bat                    # Developer build script
 ```
-
----
 
 ## License & Credits
 
-- Uses the Valve OpenVR SDK (`openvr_api.dll`).
+- Uses the Valve OpenVR SDK (`openvr_api.dll`). See [THIRD_PARTY_NOTICES](ViveTcpPublisher/THIRD_PARTY_NOTICES.md).
 - Rhino and Grasshopper are registered trademarks of Robert McNeel & Associates.

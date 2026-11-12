@@ -15,7 +15,7 @@ if errorlevel 1 (
 
 echo.
 echo [2/2] Publishing SteamVR Publisher (ViveTcpPublisher.exe)...
-dotnet publish -c Release -r win-x64 --self-contained false -o "%~dp0ViveTcpPublisher\publish-win-x64" "%~dp0ViveTcpPublisher\ViveTcpPublisher.csproj"
+dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o "%~dp0ViveTcpPublisher\publish-win-x64" "%~dp0ViveTcpPublisher\ViveTcpPublisher.csproj"
 if errorlevel 1 (
     echo [ERROR] Failed to publish ViveTcpPublisher.
     pause
