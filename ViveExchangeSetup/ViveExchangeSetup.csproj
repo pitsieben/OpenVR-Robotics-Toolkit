@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>ViveExchangeSetup</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Same DPAPI store the Grasshopper component reads -->
+    <Compile Include="..\ViveGrasshopperRecorder\TokenStore.cs" Link="TokenStore.cs" />
+  </ItemGroup>
+</Project>

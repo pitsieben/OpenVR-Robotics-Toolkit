@@ -142,6 +142,7 @@ public sealed class ViveTakeRecorderComponent : GH_Component
                 _allRecordedTakes.Clear();
                 _currentRecordingTake.Clear();
                 _isRecording = false;
+                TakeHub.Clear(InstanceGuid);
 
                 dataAccess.SetDataTree(0, new DataTree<object>());
                 dataAccess.SetData(1, 0);
@@ -193,6 +194,7 @@ public sealed class ViveTakeRecorderComponent : GH_Component
                     _isRecording = true;
                     _currentRecordingTake = new List<DataTree<object>>();
                     _lastRecordTime = currentTime;
+                    TakeHub.StartTake(InstanceGuid);
                 }
 
                 if (_currentRecordingTake.Count == 0 || (currentTime - _lastRecordTime) >= delayMs)
@@ -230,6 +232,13 @@ public sealed class ViveTakeRecorderComponent : GH_Component
                         {
                             _currentRecordingTake.Add(CloneTree(dataTree));
                             _lastRecordTime = currentTime;
+                            if (TryExtractPlane(dataTree, out var framePlane))
+                            {
+                                var k = Rhino.RhinoMath.UnitScale(Rhino.RhinoDoc.ActiveDoc?.ModelUnitSystem ?? Rhino.UnitSystem.Millimeters, Rhino.UnitSystem.Millimeters);
+                                var z = framePlane.ZAxis;
+                                TakeHub.AddSample(InstanceGuid, new PlaneSample(
+                                    framePlane.OriginX * k, framePlane.OriginY * k, framePlane.OriginZ * k, z.X, z.Y, z.Z, currentTime / 1000.0));
+                            }
                         }
                     }
                 }
@@ -243,6 +252,7 @@ public sealed class ViveTakeRecorderComponent : GH_Component
                 }
                 _isRecording = false;
                 _currentRecordingTake = new List<DataTree<object>>();
+                TakeHub.EndTake(InstanceGuid);
             }
 
             // 4. Output generation: structure { ID_Device ; ID_Take ; Frame_Index }
@@ -337,8 +347,35 @@ public sealed class ViveTakeRecorderComponent : GH_Component
                 _currentRecordingTake.Clear();
                 _isRecording = false;
             }
+            TakeHub.Clear(InstanceGuid);
             ExpireSolution(true);
         }, takeCount > 0);
+    }
+
+    public override void RemovedFromDocument(GH_Document document)
+    {
+        TakeHub.Remove(InstanceGuid);
+        base.RemovedFromDocument(document);
+    }
+
+    private static bool TryExtractPlane(DataTree<object> data, out Plane plane)
+    {
+        plane = Plane.Unset;
+        if (data == null || data.Paths.Count == 0) return false;
+        var branch = data.Branch(data.Paths[0]);
+        if (branch == null) return false;
+        foreach (var obj in branch)
+        {
+            switch (obj)
+            {
+                case ViveTrackerData td when td.Plane.IsValid: plane = td.Plane; return true;
+                case GH_ViveTrackerData gtd when gtd.Value != null && gtd.Value.Plane.IsValid: plane = gtd.Value.Plane; return true;
+                case Plane pl when pl.IsValid: plane = pl; return true;
+                case GH_Plane gpl when gpl.Value.IsValid: plane = gpl.Value; return true;
+                case IGH_Goo goo when goo.CastTo(out Plane cp) && cp.IsValid: plane = cp; return true;
+            }
+        }
+        return false;
     }
 
     public override bool Write(GH_IO.Serialization.GH_IWriter writer)

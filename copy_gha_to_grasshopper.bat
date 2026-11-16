@@ -28,4 +28,20 @@ if errorlevel 1 (
 )
 
 echo.
+set "VIEWER=%~dp0ClayViewer\publish-win-x64"
+set "VIEWERDEST=%APPDATA%\Grasshopper\Libraries\ClayViewer"
+if exist "%VIEWER%\ClayViewer.exe" (
+    echo Copying Clay Viewer %VIEWER%
+    echo to %VIEWERDEST% ...
+    xcopy /Y /E /I /Q "%VIEWER%" "%VIEWERDEST%"
+    if errorlevel 1 (
+        echo [ERROR] Failed to copy Clay Viewer. Close any running ClayViewer.exe and retry.
+    ) else (
+        echo [SUCCESS] Clay Viewer copied to Grasshopper Libraries!
+    )
+) else (
+    echo [INFO] ClayViewer\publish-win-x64 not found - run build_all.bat to publish the Clay Viewer.
+)
+
+echo.
 pause

@@ -26,7 +26,7 @@ public sealed class VivePlaneExchangeComponent : GH_Component
     public VivePlaneExchangeComponent()
         : base("Vive Plane Exchange", "PlaneX",
             "Push recorded planes to a GitHub data branch and pull the partner site's planes, so a calibration recorded at one site can be used at the other.",
-            "Vive", "TCP")
+            "Vive", "Utilities")
     {
     }
 
@@ -174,7 +174,7 @@ public sealed class VivePlaneExchangeComponent : GH_Component
 
     private static Bitmap LoadIcon()
     {
-        using var stream = typeof(VivePlaneExchangeComponent).Assembly.GetManifestResourceStream("ViveTcpRecorder.Resources.Calibration.png");
+        using var stream = typeof(VivePlaneExchangeComponent).Assembly.GetManifestResourceStream("ViveTcpRecorder.Resources.PlaneExchange.png");
         if (stream is null) return new Bitmap(24, 24);
         using var source = new Bitmap(stream);
         return new Bitmap(source, new Size(24, 24));

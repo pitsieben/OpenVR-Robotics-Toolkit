@@ -224,6 +224,24 @@ Pushes recorded planes to a GitHub data branch and pulls the partner site's plan
 
 ---
 
+### 8. Vive Plane Straighten (`Straighten`, `Vive > Calibration`)
+Makes recorded planes easier for a robot to reproduce. Any plane whose tool axis leans more than `Max Tilt` away from `Up` is rotated back to exactly `Max Tilt`, with the smallest possible rotation about its own origin, so positions never move. Planes within the limit are left untouched.
+
+- **Inputs**: `Planes` (Take Recorder `Takes`, or one list of planes per branch), `Max Tilt` (deg, default 30; 0 = all upright), `Reference` (its Z = Up, its X = roll reference; default World XY), `Flip Axis` (use -Z as the tool axis), `Fix Roll` (remove twist about the tool axis).
+- **Outputs**: `Planes` (one branch per take), `Tilt` (original angle per plane), `Clamped` (true where straightened), `Status`.
+
+---
+
+### 9. Vive Take Smooth (`Smooth`, `Vive > Calibration`)
+Removes tracking jitter per take, with separate control over position and angle. The smoothing is a centred Gaussian, so the path doesn't lag behind the recording. Orientation is averaged as quaternions, so the planes stay orthonormal.
+
+- **Inputs**: `Planes`, `Position` (sigma in frames, default 3, 0 = off), `Angle` (sigma in frames, default 5), `Keep Ends` (first and last plane stay exact), `Spacing` (resample to equal distance along the path, 0 = off), `Degree` (output curve: 1 = polyline, 3 = smooth).
+- **Outputs**: `Planes`, `Curve` (one per take), `Position Change` / `Angle Change` (largest correction per take, to check you aren't over-smoothing), `Status`.
+
+Typical chain: `Take Recorder` → `Take Smooth` → `Plane Straighten` → robot targets.
+
+---
+
 ## Tool Visualization and Custom Meshes
 
 You can attach a 3D model of your custom tool (gripper, welding head, stylus, camera mount) to the live tracker:

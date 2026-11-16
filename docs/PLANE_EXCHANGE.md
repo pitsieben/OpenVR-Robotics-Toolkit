@@ -43,7 +43,17 @@ Without the *Administration* permission, a token can't change or remove the rule
 
 **Limiting write further.** A token's write access always covers the whole repository; GitHub can't limit it to a folder. With the rules above, the worst a leaked token can do is add or edit files on `plane-data`. Every change stays in the history, so it can be restored. To stop the two sites from writing into each other's folder, use **one data repo per site**: the France token writes only to `vive-planes-france` and reads `vive-planes-austria`, and Austria's token is the mirror image. In Grasshopper, set `Repo` to your own repo and `Pull Repo` to the partner's.
 
-## 3. Store the token on each PC (hidden and encrypted)
+## 3. Easiest: the token and invite app
+
+Run **`ViveExchangeSetup\publish-win-x64\ViveExchangeSetup.exe`**. It has three tabs:
+
+- **My token:** paste your token and click *Check & save*. The app asks GitHub whether the token can read and write the repo, then saves it encrypted on this PC (same place and format as below).
+- **Create invite:** makes an encrypted `viveexchange://invite/...` link for a partner, now or later. Leave the token box empty to share the token saved on this PC. A passphrase is generated for you. **Send the link and the passphrase over two different channels** (for example, the link by email and the passphrase by phone or Signal). The link alone is useless.
+- **Accept invite:** clicking the link opens the app, if it has been run once on that PC. Otherwise paste the link, type the passphrase and accept. The app checks the token with GitHub, saves it encrypted, and tells you which Site / Remote Site / Repo to enter in Grasshopper.
+
+The link carries the token, repo, branch and site names. It's encrypted with AES-256-GCM, with a key derived from the passphrase (PBKDF2-SHA256, 300,000 rounds). A wrong passphrase or an edited link is rejected. An invite can't be revoked; to cut someone off, delete that token on GitHub. One token per site means you only cut off that site.
+
+## 3b. Store the token by script (alternative)
 
 Close Rhino, right-click **`set_exchange_token.ps1`** ▸ *Run with PowerShell*, then paste the token. The input is hidden. The token is saved to
 

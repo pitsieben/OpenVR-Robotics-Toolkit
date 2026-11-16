@@ -18,6 +18,12 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Clay viewer pipe protocol, source-linked from the ClayViewer project. -->
+    <Compile Include="..\ClayViewer\Shared\ClayProtocol.cs" Link="Clay\ClayProtocol.cs" />
+    <Compile Include="..\ClayViewer\Shared\ClayPipeClient.cs" Link="Clay\ClayPipeClient.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <EmbeddedResource Include="Resources\Listener.png" LogicalName="ViveTcpRecorder.Resources.Listener.png" />
     <EmbeddedResource Include="Resources\TakeRecorder.png" LogicalName="ViveTcpRecorder.Resources.TakeRecorder.png" />
     <EmbeddedResource Include="Resources\CalibrationRecorder.png" LogicalName="ViveTcpRecorder.Resources.CalibrationRecorder.png" />
