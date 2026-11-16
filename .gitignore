@@ -43,3 +43,8 @@ Thumbs.db
 [Dd]esktop.ini
 $RECYCLE.BIN/
 *.bak
+
+# Plane exchange tokens: never commit
+**/ViveExchange/
+token.txt
+token.dat

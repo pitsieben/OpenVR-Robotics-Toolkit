@@ -216,6 +216,14 @@ Captures single calibration poses on a Grasshopper Button press (rising edge) or
 
 ---
 
+### 7. Vive Plane Exchange (`PlaneX`)
+Pushes recorded planes to a GitHub data branch and pulls the partner site's planes, so a calibration recorded in France can be used in Austria (and the other way round). Runs in the background; no git install needed. Setup and tokens: [docs/PLANE_EXCHANGE.md](docs/PLANE_EXCHANGE.md).
+
+- **Inputs**: `Planes`, `Push` / `Pull` / `List` (buttons), `Site` (`france`), `Remote Site` (`austria`), `Name`, `Pull Name` (`latest`), `Repo` (`owner/name`), `Pull Repo` (optional), `Branch` (`plane-data`), `Token` (leave empty: run `set_exchange_token.ps1`), `Note`.
+- **Outputs**: `Pulled Planes` (scaled to the document units), `Info`, `Available`, `Status`.
+
+---
+
 ## Tool Visualization and Custom Meshes
 
 You can attach a 3D model of your custom tool (gripper, welding head, stylus, camera mount) to the live tracker:
