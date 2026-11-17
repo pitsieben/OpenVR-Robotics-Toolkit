@@ -51,3 +51,4 @@ token.dat
 
 # Workshop planning material (local only)
 docs/workshop/
+dist/

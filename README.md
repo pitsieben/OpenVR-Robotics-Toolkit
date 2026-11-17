@@ -232,6 +232,8 @@ Six pads under the tracker; shorting a pin to **Pin 2 (GND)** registers a button
 
 Needs the **.NET 8 SDK** and **Rhino 8** in the default location. Run `build_all.bat`: it builds the plugin, then publishes `ViveTcpPublisher.exe`, `ClayViewer.exe` and `ViveExchangeSetup.exe` into their `publish-win-x64` folders. Copy the new `.gha` to the repo root to update the shipped one. For a different Rhino location pass `-p:RhinoSystemDir=... -p:GrasshopperDir=...`. `ClayViewer.exe --selftest` runs the carving checks. The TCP packet format is in [ViveTcpPublisher/README.md](ViveTcpPublisher/README.md).
 
+**Release ZIP:** `powershell -ExecutionPolicy Bypass -File package_release.ps1 [-Version 1.2.0] [-SkipBuild]` builds everything, runs the viewer self-test and writes `dist\OpenVR-Robotics-Toolkit-<version>.zip`. The ZIP holds only the compiled programs, the plugin, the template, the scripts and the docs (no source code), with a `VERSION.txt` naming the git commit. It refuses to pack any token file. The version defaults to today's date.
+
 ## Repository structure
 
 ```
