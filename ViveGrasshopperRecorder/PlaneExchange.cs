@@ -25,6 +25,8 @@ public sealed class PlaneRecord
     public double[] O { get; set; } = new double[3];
     public double[] X { get; set; } = new double[3];
     public double[] Y { get; set; } = new double[3];
+    /// <summary>Grasshopper data-tree branch the plane came from, e.g. "{0;3}". Null in sets pushed before branches were kept.</summary>
+    public string? Path { get; set; }
 
     public static PlaneRecord From(Plane p) => new()
     {

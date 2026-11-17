@@ -48,3 +48,6 @@ $RECYCLE.BIN/
 **/ViveExchange/
 token.txt
 token.dat
+
+# Workshop planning material (local only)
+docs/workshop/

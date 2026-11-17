@@ -70,15 +70,16 @@ Calculates the Tool Center Point (tip) and fixed pivot point using least-squares
 Records trajectory takes automatically while the tracker is inside a designated Brep working volume.
 
 - **Inputs**:
-  - `Data` (`D`): Tracker plane or DataTree.
-  - `Brep` (`B`, optional): Working volume Brep.
+  - `Data` (`D`): The TCP plane to record (tilt is measured on it).
+  - `Brep` (`B`, optional): Working volume and carving stock (Box, closed Brep or Mesh).
   - `Record` (`R`, bool): Master recording switch.
   - `Delay` (`Ms`, double): Minimum milliseconds between frames.
   - `Tolerance` (`Tol`, double): Minimum movement in mm to register a frame.
   - `Reset` (`Rst`, bool): Clears all recorded takes.
+  - `Tool` (`Tl`, Mesh): Tracker-posed tool mesh; carved live in the Clay Viewer (buttons: Open Visualiser, Reset Stock, Get Mesh).
 - **Outputs**:
-  - `Takes` (`T`): DataTree structured as `{ID_Device; ID_Take; Frame_Index}`.
-  - `TakeCount` (`N`), `FrameCount` (`F`), `IsInside` (`In`), `Status` (`S`).
+  - `Takes` (`T`): planes, one branch per take `{take}` (several devices `{device;take}`).
+  - `Take Count` (`N`), `Frame Count` (`F`), `Is Inside` (`In`), `Status` (`S`), `Carved Mesh` (`M`), `Results` (`Res`, for the Vive Take Analytics component).
 
 ---
 

@@ -12,6 +12,7 @@ public sealed class PoseState
     public Matrix4x4 Matrix;
     public double Timestamp;
     public bool Cutting;
+    public Vector3? TcpAxis;      // TCP plane Z from the recorder (null = derive from the mesh pose)
     public long Seq;
 }
 
@@ -110,6 +111,7 @@ public sealed class ClayEngine : IDisposable
                 var ps = new PoseState
                 {
                     Matrix = ToNumerics(p.Matrix), Timestamp = p.Timestamp, Cutting = p.CuttingEnabled,
+                    TcpAxis = p.TcpAxis is { Length: 3 } a ? new Vector3((float)a[0], (float)a[1], (float)a[2]) : null,
                     Seq = Interlocked.Increment(ref _seq),
                 };
                 Interlocked.Increment(ref Stats.PosesReceived);

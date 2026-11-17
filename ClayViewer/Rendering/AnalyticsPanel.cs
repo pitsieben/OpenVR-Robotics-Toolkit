@@ -12,7 +12,7 @@ public struct PanelFrameInfo
     public long StockTris;
     public bool HavePose;
     public Vector3 ToolPos;        // displayed tool origin, mm
-    public float TiltDeg;          // tool axis (local Z) from world Z, 0..90
+    public float TiltDeg;          // TCP plane Z from world Z, 0..180
 }
 
 /// <summary>
@@ -857,7 +857,7 @@ public sealed class AnalyticsPanel
             var label = (maxCount * g / 2).ToString(Inv);
             dl.AddText(new Vector2(plotMin.X - S(5) - ImGui.CalcTextSize(label).X, y - ImGui.GetTextLineHeight() * 0.5f), dim, label);
         }
-        float X(float deg) => plotMin.X + pw * Math.Clamp(deg, 0, 90) / 90f;
+        float X(float deg) => plotMin.X + pw * Math.Clamp(deg, 0, 180) / 180f;
         var bw = pw / PlaneAnalytics.Bins;
         var lx = X(RobotLimit);
         dl.AddRectFilled(new Vector2(lx, plotMin.Y), plotMax, U32(Bad with { W = 0.06f }));
@@ -867,11 +867,11 @@ public sealed class AnalyticsPanel
             if (c == 0) continue;
             var x0 = plotMin.X + b * bw + S(1); var x1 = x0 + bw - S(2);
             var y0 = plotMax.Y - MathF.Max(S(2), ph * c / maxCount);
-            var col = PlaneAnalytics.TiltColor(b * 5 + 2.5f, RobotLimit);
+            var col = PlaneAnalytics.TiltColor(b * 10 + 5f, RobotLimit);
             dl.AddRectFilled(new Vector2(x0, y0), new Vector2(x1, plotMax.Y), U32(new Vector4(col, 0.9f)), S(2), ImDrawFlags.RoundCornersTop);
         }
         dl.AddLine(new Vector2(plotMin.X, plotMax.Y), new Vector2(plotMax.X, plotMax.Y), U32(Field));
-        for (var d = 0; d <= 90; d += 30)
+        for (var d = 0; d <= 180; d += 45)
         {
             var x = X(d);
             dl.AddLine(new Vector2(x, plotMax.Y), new Vector2(x, plotMax.Y + S(3)), dim);
@@ -897,7 +897,7 @@ public sealed class AnalyticsPanel
         if (ImGui.IsItemHovered())
         {
             var b = (int)((ImGui.GetMousePos().X - plotMin.X) / bw);
-            if (b >= 0 && b < PlaneAnalytics.Bins) Tip(F("{0}-{1}° tilt: {2} planes", b * 5, b * 5 + 5, pa.Histogram[b]));
+            if (b >= 0 && b < PlaneAnalytics.Bins) Tip(F("{0}-{1}° tilt: {2} planes", b * 10, b * 10 + 10, pa.Histogram[b]));
             else Tip("Tool tilt from world Z, 5° bins. Dashed red = robot limit.");
         }
     }

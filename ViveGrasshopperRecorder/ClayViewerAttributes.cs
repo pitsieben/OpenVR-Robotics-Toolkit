@@ -6,6 +6,14 @@ using System.Drawing;
 
 namespace ViveTcpRecorder;
 
+/// <summary>The three viewer buttons; implemented by the Take Recorder (and by the obsolete Clay Viewer component).</summary>
+internal interface IClayButtons
+{
+    void OpenVisualiser();
+    void ResetStock();
+    void GetMesh();
+}
+
 /// <summary>
 /// Clay Viewer layout in the CamCore style: full-width buttons under the component body, then GH's dark status bubble
 /// (the component's Message, one or two lines) below them. Mouse buttons are not inspected (any click on a button fires it).
@@ -17,7 +25,9 @@ internal sealed class ClayViewerAttributes : GH_ComponentAttributes
     private readonly RectangleF[] _buttons = new RectangleF[3];
     private int _pressed = -1;
 
-    public ClayViewerAttributes(ViveClayViewerComponent owner) : base(owner) { }
+    private readonly IClayButtons _buttonsOwner;
+
+    public ClayViewerAttributes(GH_Component owner, IClayButtons buttonsOwner) : base(owner) { _buttonsOwner = buttonsOwner; }
 
     protected override void Layout()
     {
@@ -64,10 +74,9 @@ internal sealed class ClayViewerAttributes : GH_ComponentAttributes
         global::Grasshopper.Instances.InvalidateCanvas();
         if (_buttons[i].Contains(e.CanvasLocation))
         {
-            var owner = (ViveClayViewerComponent)Owner;
-            if (i == 0) owner.OpenVisualiser();
-            else if (i == 1) owner.ResetStock();
-            else owner.GetMesh();
+            if (i == 0) _buttonsOwner.OpenVisualiser();
+            else if (i == 1) _buttonsOwner.ResetStock();
+            else _buttonsOwner.GetMesh();
         }
         return GH_ObjectResponse.Release;
     }

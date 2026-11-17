@@ -9,8 +9,8 @@ public static class PlaneTakeTools
 {
     /// <summary>
     /// Groups a tree into takes of planes, in order.
-    /// Take Recorder layout {dev;take;frame} (one branch per frame, several items) → take key {dev;take}.
-    /// Any other layout (e.g. {take} with a list of planes) → each branch is one take.
+    /// Current Take Recorder layout ({take} or {device;take}, one branch of planes per take) → each branch is one take.
+    /// Old Take Recorder layout {dev;take;frame} (one branch per frame, several items) → take key {dev;take}.
     /// Only planes are used: GH_Plane, Plane, or Vive tracker data (its plane).
     /// </summary>
     public static List<(GH_Path Path, List<Plane> Planes)> GroupTakes(GH_Structure<IGH_Goo> tree)

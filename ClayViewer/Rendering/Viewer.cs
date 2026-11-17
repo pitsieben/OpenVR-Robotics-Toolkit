@@ -323,8 +323,10 @@ public sealed class Viewer : IDisposable
         if (info.HavePose)
         {
             info.ToolPos = _dispPos;
-            var ax = Vector3.Transform(Vector3.UnitZ, _dispRot);            // tool axis = local Z
-            info.TiltDeg = MathF.Acos(Math.Clamp(MathF.Abs(ax.Z), 0f, 1f)) * 180f / MathF.PI;
+            // tilt = angle between the TCP plane's Z (sent by the recorder) and world Z
+            var ax = _engine.LatestPose?.TcpAxis ?? Vector3.Transform(Vector3.UnitZ, _dispRot);
+            var len = ax.Length();
+            info.TiltDeg = len < 1e-6f ? 0f : MathF.Acos(Math.Clamp(ax.Z / len, -1f, 1f)) * 180f / MathF.PI;
         }
         if (!io.WantCaptureMouse && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left) && _panel.InView(io.MousePos)) Frame();
         _panel.Draw(info, _pa, io.DisplaySize);

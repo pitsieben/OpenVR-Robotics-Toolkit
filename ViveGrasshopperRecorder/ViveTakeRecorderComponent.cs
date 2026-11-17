@@ -7,18 +7,34 @@ using Grasshopper.Kernel;
 using Grasshopper.Kernel.Data;
 using Grasshopper.Kernel.Types;
 using Rhino.Geometry;
+using ViveClay.Protocol;
 
 namespace ViveTcpRecorder;
 
-public sealed class ViveTakeRecorderComponent : GH_Component
+/// <summary>
+/// Records takes of the plane wired into <c>Data</c> (normally the tool TCP plane) while it is inside the working volume (or on trigger),
+/// and carves the same volume in the external ClayViewer.exe with the live <c>Tool</c> mesh. The recorded planes are the input planes
+/// (a tracker-data payload only supplies its plane when no plane is given), so the viewer, <c>Takes</c> and the analytics all see the TCP plane.
+/// </summary>
+public sealed class ViveTakeRecorderComponent : GH_Component, IClayButtons
 {
-    private static readonly Lazy<Bitmap> ComponentIcon = new(LoadIcon);
+    private static readonly Lazy<Bitmap> ComponentIcon = new(() => PlaneIcons.Load("TakeRecorder.png"));
 
     private readonly object _gate = new();
-    private readonly List<List<DataTree<object>>> _allRecordedTakes = new();
-    private List<DataTree<object>> _currentRecordingTake = new();
+    private readonly List<List<DeviceFrame<Plane>[]>> _takes = new();        // completed takes: take -> frame -> devices
+    private List<DeviceFrame<Plane>[]> _current = new();
     private bool _isRecording;
     private double _lastRecordTime;
+    private long _version;
+    private double _unitToMm = 1;
+    private readonly ClayLink _clay;
+
+    // cached outputs, rebuilt only when the recording or the unit scale changed
+    private long _cacheVersion = -1;
+    private double _cacheScale = double.NaN;
+    private DataTree<Plane> _cacheTree = new();
+    private List<TakeRecord> _cacheRecords = new();
+    private int _cacheFrames;
 
     public bool RequireTriggerToRecord { get; set; }
 
@@ -26,26 +42,30 @@ public sealed class ViveTakeRecorderComponent : GH_Component
         : base(
             "Vive Take Recorder",
             "ViveTakes",
-            "Records trajectory takes of tracker planes while inside a working area Brep (or on trigger).",
+            "Records takes of the TCP plane while it is inside the working volume (or on trigger) and carves the same volume live in the external Clay Viewer with the Tool mesh. Buttons: Open Visualiser, Reset Stock, Get Mesh. Feed Results to Vive Take Analytics.",
             "Vive",
             "TCP")
     {
+        _clay = new ClayLink(this) { PlanesProvider = BuildPlanesMessage };
     }
 
     public override Guid ComponentGuid => new("9F27C246-81B4-4B7E-874D-4EAE3890DF11");
 
     protected override Bitmap Icon => ComponentIcon.Value;
 
+    public override void CreateAttributes() => m_attributes = new ClayViewerAttributes(this, this);
+
     protected override void RegisterInputParams(GH_InputParamManager parameters)
     {
         parameters.AddGenericParameter(
             "Data", "D",
-            "Tracker data (Plane, or DataTree containing Plane/metadata to record).",
+            "The plane to record: normally the tool TCP plane. A tracker-data payload is accepted too (its plane is used only when no plane is given; its trigger is read either way). Tilt and all analytics refer to this plane.",
             GH_ParamAccess.tree);
+        parameters[0].Optional = true;
 
-        parameters.AddBrepParameter(
+        parameters.AddGenericParameter(
             "Brep", "B",
-            "Optional working area Brep. Recording automatically occurs while tracker plane is inside this volume.",
+            "Working volume and carving stock: a Box, closed Brep or closed Mesh. Recording happens while the Data plane is inside; a box is carved as a box, anything else as a mesh.",
             GH_ParamAccess.item);
         parameters[1].Optional = true;
 
@@ -63,7 +83,7 @@ public sealed class ViveTakeRecorderComponent : GH_Component
 
         parameters.AddNumberParameter(
             "Tolerance", "Tol",
-            "Distance tolerance in mm. If > 0, skips recording frames if the tracker hasn't moved more than this distance.",
+            "Distance tolerance in mm. If > 0, skips recording frames if the plane hasn't moved more than this distance.",
             GH_ParamAccess.item,
             0.0);
 
@@ -72,50 +92,62 @@ public sealed class ViveTakeRecorderComponent : GH_Component
             "Delete all recorded takes and planes when True.",
             GH_ParamAccess.item,
             false);
+
+        parameters.AddMeshParameter(
+            "Tool", "Tl",
+            "Tool mesh already placed in world by the Vive Tracker component. The first mesh becomes the tool reference; later meshes must be rigid copies of it. Carving is always on.",
+            GH_ParamAccess.item);
+        parameters[6].Optional = true;
     }
 
     protected override void RegisterOutputParams(GH_OutputParamManager parameters)
     {
         parameters.AddGenericParameter(
             "Takes", "T",
-            "Recorded data tree with path structure {ID_Device; ID_Take; Frame_Index}.",
+            "Recorded planes: one branch per take {take} (several devices: {device;take}), planes in recording order.",
             GH_ParamAccess.tree);
 
         parameters.AddIntegerParameter(
-            "TakeCount", "N",
+            "Take Count", "N",
             "Number of completed takes recorded.",
             GH_ParamAccess.item);
 
         parameters.AddIntegerParameter(
-            "FrameCount", "F",
+            "Frame Count", "F",
             "Total number of frames recorded across all takes.",
             GH_ParamAccess.item);
 
         parameters.AddBooleanParameter(
-            "IsInside", "In",
-            "True if the tracker plane origin is currently inside the working volume Brep.",
+            "Is Inside", "In",
+            "True if the Data plane origin is currently inside the working volume.",
             GH_ParamAccess.item);
 
         parameters.AddTextParameter(
             "Status", "S",
-            "Recording status description.",
+            "Recording and viewer status.",
+            GH_ParamAccess.item);
+
+        parameters.AddMeshParameter(
+            "Carved Mesh", "M",
+            "Carved stock in document units (after the Get Mesh button).",
+            GH_ParamAccess.item);
+
+        parameters.AddGenericParameter(
+            "Results", "Res",
+            "Takes (planes, times, triggers) plus the viewer's job numbers (removed volume, stock volume, resolution). Wire to Vive Take Analytics.",
             GH_ParamAccess.item);
     }
 
     protected override void SolveInstance(IGH_DataAccess dataAccess)
     {
         // Protection against Grasshopper multiple iterations on same frame
-        if (dataAccess.Iteration > 0)
-        {
-            dataAccess.SetDataTree(0, new DataTree<object>());
-            return;
-        }
+        if (dataAccess.Iteration > 0) return;
 
-        if (!dataAccess.GetDataTree(0, out GH_Structure<IGH_Goo> rawTree))
-            return;
+        GH_Structure<IGH_Goo>? rawTree = null;
+        dataAccess.GetDataTree(0, out rawTree);
 
-        Brep? brep = null;
-        dataAccess.GetData(1, ref brep);
+        IGH_Goo? volumeGoo = null;
+        dataAccess.GetData(1, ref volumeGoo);
 
         var run = true;
         dataAccess.GetData(2, ref run);
@@ -129,207 +161,232 @@ public sealed class ViveTakeRecorderComponent : GH_Component
         var resetAll = false;
         dataAccess.GetData(5, ref resetAll);
 
-        // Convert incoming GH_Structure to DataTree<object>
-        var dataTree = ConvertToDataTree(rawTree);
+        Mesh? tool = null;
+        dataAccess.GetData(6, ref tool);
 
-        double currentTime = Stopwatch.GetTimestamp() * (1000.0 / Stopwatch.Frequency);
+        var volume = NormalizeVolume(volumeGoo?.ScriptVariable());
+        if (volumeGoo != null && volume == null)
+            AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, "Brep must be a Box, closed Brep or closed Mesh.");
+
+        _unitToMm = Rhino.RhinoMath.UnitScale(Rhino.RhinoDoc.ActiveDoc?.ModelUnitSystem ?? Rhino.UnitSystem.Millimeters, Rhino.UnitSystem.Millimeters);
+
+        // carving side (never blocks: pipe client has its own thread)
+        double now = Stopwatch.GetTimestamp() / (double)Stopwatch.Frequency;   // seconds
+        var tcpNow = TakeFrames.Extract(rawTree, now, out _);
+        _clay.Sync(volume, tool, tcpNow.Length > 0 ? tcpNow[0].Item.ZAxis : (Vector3d?)null);
+        var planesChanged = false;
+        var isInside = true;
+        var hasPlane = false;
+        string recLine;
+        string status;
+        int completedTakes, totalFrames;
+        List<TakeRecord> records;
+        DataTree<Plane> tree;
 
         lock (_gate)
         {
-            // 1. Reset
             if (resetAll)
             {
-                _allRecordedTakes.Clear();
-                _currentRecordingTake.Clear();
+                _takes.Clear();
+                _current = new List<DeviceFrame<Plane>[]>();
                 _isRecording = false;
-                TakeHub.Clear(InstanceGuid);
-
-                dataAccess.SetDataTree(0, new DataTree<object>());
-                dataAccess.SetData(1, 0);
-                dataAccess.SetData(2, 0);
-                dataAccess.SetData(3, false);
-                dataAccess.SetData(4, "Reset (0 takes)");
-                Message = "Cleared";
-                return;
-            }
-
-            // 2. Brep inside/outside check
-            var hasPoint = TryExtractPoint(dataTree, out Point3d trackerPoint);
-            var isInside = true;
-
-            if (brep != null && brep.IsValid)
-            {
-                if (hasPoint)
-                {
-                    isInside = brep.IsPointInside(trackerPoint, 0.001, false);
-                }
-                else
-                {
-                    isInside = false;
-                }
-            }
-
-            // Check if any tracker in dataTree has physical trigger active
-            bool triggerActive = false;
-            foreach (var path in dataTree.Paths)
-            {
-                foreach (var item in dataTree.Branch(path))
-                {
-                    if (item is ViveTrackerData td && td.Trigger)
-                    {
-                        triggerActive = true;
-                        break;
-                    }
-                }
-                if (triggerActive) break;
-            }
-
-            // 3. Recording logic
-            var toggle = run && (brep == null || isInside) && (!RequireTriggerToRecord || triggerActive);
-
-            if (toggle)
-            {
-                if (!_isRecording)
-                {
-                    _isRecording = true;
-                    _currentRecordingTake = new List<DataTree<object>>();
-                    _lastRecordTime = currentTime;
-                    TakeHub.StartTake(InstanceGuid);
-                }
-
-                if (_currentRecordingTake.Count == 0 || (currentTime - _lastRecordTime) >= delayMs)
-                {
-                    var shouldRecord = true;
-
-                    if (dataTree.Paths.Count > 0)
-                    {
-                        if (_currentRecordingTake.Count > 0)
-                        {
-                            var lastFrame = _currentRecordingTake.Last();
-                            if (lastFrame.Paths.Count > 0 && tolerance > 0.0001)
-                            {
-                                var p0 = dataTree.Paths[0];
-                                var pLast = lastFrame.Paths.Count > 0 ? lastFrame.Paths[0] : null;
-
-                                if (pLast != null)
-                                {
-                                    var bCurr = dataTree.Branch(p0);
-                                    var bLast = lastFrame.Branch(pLast);
-
-                                    // If branch has >1 items [time, plane], compare index 1; otherwise index 0
-                                    object? itemCurr = bCurr.Count > 1 ? bCurr[1] : (bCurr.Count > 0 ? bCurr[0] : null);
-                                    object? itemLast = bLast.Count > 1 ? bLast[1] : (bLast.Count > 0 ? bLast[0] : null);
-
-                                    if (itemCurr != null && itemLast != null && IsSimilar(itemCurr, itemLast, tolerance))
-                                    {
-                                        shouldRecord = false;
-                                    }
-                                }
-                            }
-                        }
-
-                        if (shouldRecord)
-                        {
-                            _currentRecordingTake.Add(CloneTree(dataTree));
-                            _lastRecordTime = currentTime;
-                            if (TryExtractPlane(dataTree, out var framePlane))
-                            {
-                                var k = Rhino.RhinoMath.UnitScale(Rhino.RhinoDoc.ActiveDoc?.ModelUnitSystem ?? Rhino.UnitSystem.Millimeters, Rhino.UnitSystem.Millimeters);
-                                var z = framePlane.ZAxis;
-                                TakeHub.AddSample(InstanceGuid, new PlaneSample(
-                                    framePlane.OriginX * k, framePlane.OriginY * k, framePlane.OriginZ * k, z.X, z.Y, z.Z, currentTime / 1000.0));
-                            }
-                        }
-                    }
-                }
-            }
-            else if (_isRecording)
-            {
-                // Tracker exited Brep or run was toggled off -> complete current take
-                if (_currentRecordingTake.Count > 0)
-                {
-                    _allRecordedTakes.Add(new List<DataTree<object>>(_currentRecordingTake));
-                }
-                _isRecording = false;
-                _currentRecordingTake = new List<DataTree<object>>();
-                TakeHub.EndTake(InstanceGuid);
-            }
-
-            // 4. Output generation: structure { ID_Device ; ID_Take ; Frame_Index }
-            var outTree = new DataTree<object>();
-
-            void ProcesarToma(List<DataTree<object>> toma, int takeIndex)
-            {
-                for (int f = 0; f < toma.Count; f++)
-                {
-                    var frameData = toma[f];
-                    foreach (var p in frameData.Paths)
-                    {
-                        int devId = p.Indices.Length > 0 ? p.Indices[0] : 0;
-                        var outPath = new GH_Path(devId, takeIndex, f);
-                        foreach (var item in frameData.Branch(p))
-                        {
-                            if (item is ViveTrackerData td)
-                            {
-                                outTree.Add(td.Plane, outPath);
-                                outTree.Add(td.Trigger, outPath);
-                                outTree.Add(td.TriggerValue, outPath);
-                                outTree.Add(new GH_ViveTrackerData(td), outPath);
-                            }
-                            else
-                            {
-                                outTree.Add(item, outPath);
-                            }
-                        }
-                    }
-                }
-            }
-
-            for (int t = 0; t < _allRecordedTakes.Count; t++)
-            {
-                ProcesarToma(_allRecordedTakes[t], t);
-            }
-
-            if (_isRecording && _currentRecordingTake.Count > 0)
-            {
-                ProcesarToma(_currentRecordingTake, _allRecordedTakes.Count);
-            }
-
-            int completedTakes = _allRecordedTakes.Count;
-            int totalFrames = _allRecordedTakes.Sum(t => t.Count) + _currentRecordingTake.Count;
-
-            string status;
-            if (_isRecording)
-            {
-                status = $"Recording Take #{completedTakes + 1} ({_currentRecordingTake.Count} frames)";
-                Message = $"REC #{completedTakes + 1} ({_currentRecordingTake.Count})";
-            }
-            else if (completedTakes > 0)
-            {
-                status = brep != null && !isInside
-                    ? $"Outside Brep ({completedTakes} takes saved, {totalFrames} frames)"
-                    : $"Idle ({completedTakes} takes saved, {totalFrames} frames)";
-                Message = $"{completedTakes} takes";
+                _version++;
+                planesChanged = true;
             }
             else
             {
-                status = brep != null && !isInside ? "Outside Brep" : "Idle (0 takes)";
-                Message = "Idle";
+                // frame = the planes of all Data branches
+                var frame = TakeFrames.Extract(rawTree, now, out var triggerActive);
+                hasPlane = frame.Length > 0;
+                var primary = hasPlane ? frame[0].Item : Plane.Unset;
+
+                if (volume != null && hasPlane)
+                    isInside = IsInside(volume, primary.Origin);
+                else if (volume != null)
+                    isInside = false;
+
+                var toggle = hasPlane && run && (volume == null || isInside) && (!RequireTriggerToRecord || triggerActive);
+
+                if (toggle)
+                {
+                    if (!_isRecording)
+                    {
+                        _isRecording = true;
+                        _current = new List<DeviceFrame<Plane>[]>();
+                        _lastRecordTime = now;
+                        _version++;
+                        planesChanged = true;
+                    }
+
+                    if (hasPlane && (_current.Count == 0 || (now - _lastRecordTime) * 1000.0 >= delayMs))
+                    {
+                        var shouldRecord = true;
+                        if (_current.Count > 0 && tolerance > 0.0001)
+                        {
+                            var last = _current[^1][0].Item.Origin;
+                            if (last.DistanceTo(primary.Origin) * _unitToMm < tolerance) shouldRecord = false;
+                        }
+                        if (shouldRecord)
+                        {
+                            _current.Add(frame);
+                            _lastRecordTime = now;
+                            _version++;
+                            planesChanged = true;
+                        }
+                    }
+                }
+                else if (_isRecording)
+                {
+                    // plane left the volume or recording was switched off -> complete current take
+                    if (_current.Count > 0) _takes.Add(_current);
+                    _isRecording = false;
+                    _current = new List<DeviceFrame<Plane>[]>();
+                    _version++;
+                    planesChanged = true;
+                }
             }
 
-            dataAccess.SetDataTree(0, outTree);
-            dataAccess.SetData(1, completedTakes);
-            dataAccess.SetData(2, totalFrames);
-            dataAccess.SetData(3, isInside);
-            dataAccess.SetData(4, status);
+            RebuildCache();
+            completedTakes = _takes.Count;
+            totalFrames = _cacheFrames;
+            records = _cacheRecords;
+            tree = _cacheTree;
+
+            if (resetAll)
+            {
+                recLine = "Cleared";
+                status = "Reset (0 takes)";
+            }
+            else if (_isRecording)
+            {
+                recLine = $"REC #{completedTakes + 1} ({_current.Count})";
+                status = $"Recording Take #{completedTakes + 1} ({_current.Count} frames)";
+            }
+            else if (completedTakes > 0)
+            {
+                recLine = $"{completedTakes} takes";
+                status = volume != null && !isInside
+                    ? $"Outside volume ({completedTakes} takes saved, {totalFrames} frames)"
+                    : $"Idle ({completedTakes} takes saved, {totalFrames} frames)";
+            }
+            else
+            {
+                recLine = "Idle";
+                status = volume != null && !isInside ? "Outside volume" : "Idle (0 takes)";
+            }
+        }
+
+        if (planesChanged) _clay.NotifyPlanes(immediate: resetAll);
+
+        var viewer = _clay.StateText();
+        Message = recLine + "\n" + viewer;
+
+        dataAccess.SetDataTree(0, tree);
+        dataAccess.SetData(1, completedTakes);
+        dataAccess.SetData(2, totalFrames);
+        dataAccess.SetData(3, isInside);
+        dataAccess.SetData(4, status + " | " + viewer);
+        dataAccess.SetData(5, _clay.Carved);
+        dataAccess.SetData(6, new GH_ViveTakeResults(new ViveTakeResults
+        {
+            Takes = records,
+            RemovedMm3 = _clay.RemovedMm3,
+            StockMm3 = _clay.StockMm3,
+            ResolutionMm = _clay.ResolutionMm,
+        }));
+    }
+
+    // ------------------------------------------------------------------ outputs
+    /// <summary>Rebuilds the takes tree and the analytics records when the recording changed (caller holds _gate).</summary>
+    private void RebuildCache()
+    {
+        if (_cacheVersion == _version && _cacheScale == _unitToMm) return;
+        var all = new List<IReadOnlyList<DeviceFrame<Plane>[]>>(_takes);
+        if (_isRecording && _current.Count > 0) all.Add(_current);
+        var groups = TakeLayout.Group(all);
+
+        TakeFrames.Build(groups, _unitToMm, out var tree, out var records);
+        _cacheTree = tree;
+        _cacheRecords = records;
+        _cacheFrames = _takes.Sum(t => t.Count) + (_isRecording ? _current.Count : 0);
+        _cacheVersion = _version;
+        _cacheScale = _unitToMm;
+    }
+
+    /// <summary>Snapshot of the primary device's recorded planes for the viewer's path/tilt display (any thread).</summary>
+    private RecordedPlanesMsg? BuildPlanesMessage()
+    {
+        lock (_gate)
+        {
+            var k = _unitToMm;
+            var all = new List<List<DeviceFrame<Plane>[]>>(_takes);
+            if (_current.Count > 0 || _isRecording) all.Add(_current);
+            var primary = int.MaxValue;
+            foreach (var take in all)
+                foreach (var frame in take)
+                    foreach (var f in frame) primary = Math.Min(primary, f.Device);
+
+            var n = 0;
+            foreach (var take in all)
+                foreach (var frame in take) if (frame.Any(f => f.Device == primary)) n++;
+
+            var msg = new RecordedPlanesMsg
+            {
+                Recording = _isRecording,
+                CurrentTake = _takes.Count,
+                Take = new int[n], Origin = new float[n * 3], Axis = new float[n * 3], Time = new double[n],
+            };
+            var i = 0;
+            for (var t = 0; t < all.Count; t++)
+                foreach (var frame in all[t])
+                {
+                    var item = frame.FirstOrDefault(f => f.Device == primary);
+                    if (item == null) continue;
+                    var p = item.Item;
+                    var z = p.ZAxis;
+                    msg.Take[i] = t;
+                    msg.Origin[i * 3] = (float)(p.OriginX * k); msg.Origin[i * 3 + 1] = (float)(p.OriginY * k); msg.Origin[i * 3 + 2] = (float)(p.OriginZ * k);
+                    msg.Axis[i * 3] = (float)z.X; msg.Axis[i * 3 + 1] = (float)z.Y; msg.Axis[i * 3 + 2] = (float)z.Z;
+                    msg.Time[i] = item.Time;
+                    i++;
+                }
+            return msg;
         }
     }
 
+    // ------------------------------------------------------------------ input handling
+    /// <summary>Box, closed Brep or closed Mesh as a volume (Extrusions become Breps); anything else is null.</summary>
+    private static object? NormalizeVolume(object? geo)
+    {
+        switch (geo)
+        {
+            case Box box when box.IsValid: return box;
+            case Extrusion ex: return ex.ToBrep();
+            case Brep brep when brep.IsValid: return brep;
+            case Mesh mesh when mesh.IsValid: return mesh;
+            default: return null;
+        }
+    }
+
+    private static bool IsInside(object volume, Point3d p) => volume switch
+    {
+        Box box => box.Contains(p),
+        Brep brep => brep.IsPointInside(p, 0.001, false),
+        Mesh mesh => mesh.IsClosed && mesh.IsPointInside(p, 0.001, false),
+        _ => true,
+    };
+
+    // ------------------------------------------------------------------ buttons
+    void IClayButtons.OpenVisualiser() => _clay.OpenVisualiser();
+    void IClayButtons.ResetStock() => _clay.ResetStock();
+    void IClayButtons.GetMesh() => _clay.GetMesh();
+
+    // ------------------------------------------------------------------ menu / persistence / lifetime
     protected override void AppendAdditionalComponentMenuItems(ToolStripDropDown menu)
     {
         base.AppendAdditionalComponentMenuItems(menu);
         int takeCount;
-        lock (_gate) takeCount = _allRecordedTakes.Count + (_isRecording ? 1 : 0);
+        lock (_gate) takeCount = _takes.Count + (_isRecording ? 1 : 0);
 
         Menu_AppendItem(menu, "Require Trigger Button to Record", (sender, e) =>
         {
@@ -343,44 +400,28 @@ public sealed class ViveTakeRecorderComponent : GH_Component
             RecordUndoEvent("Clear All Takes");
             lock (_gate)
             {
-                _allRecordedTakes.Clear();
-                _currentRecordingTake.Clear();
+                _takes.Clear();
+                _current = new List<DeviceFrame<Plane>[]>();
                 _isRecording = false;
+                _version++;
             }
-            TakeHub.Clear(InstanceGuid);
+            _clay.NotifyPlanes(immediate: true);
             ExpireSolution(true);
         }, takeCount > 0);
+
+        _clay.AppendResolutionMenu(menu);
     }
 
     public override void RemovedFromDocument(GH_Document document)
     {
-        TakeHub.Remove(InstanceGuid);
+        _clay.Detach();
         base.RemovedFromDocument(document);
-    }
-
-    private static bool TryExtractPlane(DataTree<object> data, out Plane plane)
-    {
-        plane = Plane.Unset;
-        if (data == null || data.Paths.Count == 0) return false;
-        var branch = data.Branch(data.Paths[0]);
-        if (branch == null) return false;
-        foreach (var obj in branch)
-        {
-            switch (obj)
-            {
-                case ViveTrackerData td when td.Plane.IsValid: plane = td.Plane; return true;
-                case GH_ViveTrackerData gtd when gtd.Value != null && gtd.Value.Plane.IsValid: plane = gtd.Value.Plane; return true;
-                case Plane pl when pl.IsValid: plane = pl; return true;
-                case GH_Plane gpl when gpl.Value.IsValid: plane = gpl.Value; return true;
-                case IGH_Goo goo when goo.CastTo(out Plane cp) && cp.IsValid: plane = cp; return true;
-            }
-        }
-        return false;
     }
 
     public override bool Write(GH_IO.Serialization.GH_IWriter writer)
     {
         writer.SetBoolean("RequireTriggerToRecord", RequireTriggerToRecord);
+        _clay.Write(writer);
         return base.Write(writer);
     }
 
@@ -388,127 +429,7 @@ public sealed class ViveTakeRecorderComponent : GH_Component
     {
         if (reader.ItemExists("RequireTriggerToRecord"))
             RequireTriggerToRecord = reader.GetBoolean("RequireTriggerToRecord");
+        _clay.Read(reader);
         return base.Read(reader);
-    }
-
-    private static bool IsSimilar(object? dataA, object? dataB, double tol)
-    {
-        if (dataA == null || dataB == null) return false;
-        if (tol <= 0.0001) return false;
-
-        if (dataA is ViveTrackerData tdA && dataB is ViveTrackerData tdB)
-            return tdA.Origin.DistanceTo(tdB.Origin) < tol;
-        if (dataA is GH_ViveTrackerData gtdA && dataB is GH_ViveTrackerData gtdB)
-            return gtdA.Value != null && gtdB.Value != null && gtdA.Value.Origin.DistanceTo(gtdB.Value.Origin) < tol;
-        if (dataA is Plane pA && dataB is Plane pB)
-            return pA.Origin.DistanceTo(pB.Origin) < tol;
-        if (dataA is Point3d ptA && dataB is Point3d ptB)
-            return ptA.DistanceTo(ptB) < tol;
-        if (dataA is GH_Plane gpA && dataB is GH_Plane gpB)
-            return gpA.Value.Origin.DistanceTo(gpB.Value.Origin) < tol;
-        if (dataA is GH_Point gptA && dataB is GH_Point gptB)
-            return gptA.Value.DistanceTo(gptB.Value) < tol;
-        if (dataA is double dA && dataB is double dB)
-            return Math.Abs(dA - dB) < tol;
-
-        return dataA.Equals(dataB);
-    }
-
-    private static DataTree<object> CloneTree(DataTree<object> tree)
-    {
-        var clone = new DataTree<object>();
-        if (tree == null) return clone;
-        foreach (var p in tree.Paths)
-        {
-            clone.AddRange(tree.Branch(p).Select(x => x), p);
-        }
-        return clone;
-    }
-
-    private static DataTree<object> ConvertToDataTree(GH_Structure<IGH_Goo> rawTree)
-    {
-        var tree = new DataTree<object>();
-        if (rawTree == null) return tree;
-
-        foreach (var path in rawTree.Paths)
-        {
-            var branch = rawTree.get_Branch(path);
-            foreach (var goo in branch)
-            {
-                if (goo == null) continue;
-                object raw = UnwrapGoo(goo);
-                tree.Add(raw, path);
-            }
-        }
-        return tree;
-    }
-
-    private static object UnwrapGoo(object? item)
-    {
-        if (item == null) return null!;
-        if (item is GH_ViveTrackerData gtd) return gtd.Value;
-        if (item is ViveTrackerData td) return td;
-        if (item is GH_Plane gp) return gp.Value;
-        if (item is GH_Point gpt) return gpt.Value;
-        if (item is GH_Number gn) return gn.Value;
-        if (item is GH_Integer gi) return gi.Value;
-        if (item is GH_String gs) return gs.Value;
-        if (item is GH_Boolean gb) return gb.Value;
-        if (item is GH_Time gt) return gt.Value;
-        if (item is GH_Vector gv) return gv.Value;
-        if (item is IGH_Goo goo)
-        {
-            if (goo.CastTo(out Plane pl)) return pl;
-            if (goo.CastTo(out Point3d pt)) return pt;
-            if (goo.CastTo(out double d)) return d;
-        }
-        return item;
-    }
-
-    private static bool TryExtractPoint(DataTree<object> data, out Point3d point)
-    {
-        point = Point3d.Unset;
-        if (data == null || data.Paths.Count == 0) return false;
-
-        var firstPath = data.Paths[0];
-        var branch = data.Branch(firstPath);
-        if (branch == null || branch.Count == 0) return false;
-
-        for (int i = 0; i < branch.Count; i++)
-        {
-            if (TryGetPoint(branch[i], out point))
-                return true;
-        }
-
-        return false;
-    }
-
-    private static bool TryGetPoint(object? obj, out Point3d point)
-    {
-        point = Point3d.Unset;
-        if (obj == null) return false;
-
-        if (obj is ViveTrackerData td && td.Plane.IsValid) { point = td.Origin; return true; }
-        if (obj is GH_ViveTrackerData gtd && gtd.Value != null && gtd.Value.Plane.IsValid) { point = gtd.Value.Origin; return true; }
-        if (obj is Plane pl) { point = pl.Origin; return true; }
-        if (obj is Point3d pt) { point = pt; return true; }
-        if (obj is GH_Plane gpl) { point = gpl.Value.Origin; return true; }
-        if (obj is GH_Point gpt) { point = gpt.Value; return true; }
-        if (obj is IGH_Goo goo)
-        {
-            if (goo.CastTo(out Plane cpl)) { point = cpl.Origin; return true; }
-            if (goo.CastTo(out Point3d cpt)) { point = cpt; return true; }
-        }
-        return false;
-    }
-
-    private static Bitmap LoadIcon()
-    {
-        using var stream = typeof(ViveTakeRecorderComponent).Assembly.GetManifestResourceStream("ViveTcpRecorder.Resources.TakeRecorder.png");
-        if (stream is null)
-            return new Bitmap(24, 24);
-
-        using var source = new Bitmap(stream);
-        return new Bitmap(source, new Size(24, 24));
     }
 }

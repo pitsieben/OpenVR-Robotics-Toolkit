@@ -108,7 +108,8 @@ Before you change the template, save a copy under a new name.
 | **Vive Tracker** | `Vive > Tracking Device` | Extracts live tracker pose, transforms custom tool meshes, and exposes trigger/pogo-pin states. | `Vive` (context)<br>`Index` (int, default `0`)<br>`Mesh` (custom tool geometry at `0,0,0`) | `Tracker` (3D geometry)<br>`Plane` (Z-up plane)<br>`Matrix` (4x4 Transform)<br>`TrackerData` (payload)<br>`Trigger` (bool) |
 | **Vive Lighthouse** | `Vive > Tracking Device` | Displays base station position, 3D model, and optical beam emission plane. Auto-increments from LH1 to LH4. | `Vive` (context)<br>`Index` (optional int override) | `Lighthouse` (3D geometry)<br>`Plane` (beam direction)<br>`Matrix` (4x4 Transform) |
 | **Tool Center Point** | `Vive > Calibration` | Calculates the tool tip ($p_F$) and stationary pivot point ($P_B$) from 4+ tracker poses using least-squares fitting. | `Poses` (list of at least 4 calibration planes) | `TCP_Relative` ($p_F$ in tool frame)<br>`TCP` (tip in world coordinates)<br>`FixedPoint` ($P_B$ world pivot)<br>`Residual` (RMS error in mm) |
-| **Vive Take Recorder** | `Vive > TCP` | Continuous trajectory recorder. Records takes inside a Brep volume or on physical trigger press. | `Data` (Plane or `TrackerData`)<br>`Brep` (working volume)<br>`Record` (master switch)<br>`Tolerance` (min distance in mm) | `Takes` (DataTree `{dev; take; frame}`)<br>`TakeCount` (int)<br>`FrameCount` (int)<br>`IsInside` (bool) |
+| **Vive Take Recorder** | `Vive > TCP` | Records takes of the TCP plane inside a Brep volume (or on trigger) and carves the same volume live in the external Clay Viewer. | `Data` (TCP plane)<br>`Brep` (working volume = stock)<br>`Record`, `Delay`, `Tolerance`, `Reset`<br>`Tool` (tracker-posed mesh) | `Takes` (one branch per take)<br>`Take Count`, `Frame Count`, `Is Inside`, `Status`<br>`Carved Mesh`<br>`Results` (for Take Analytics) |
+| **Vive Take Analytics** | `Vive > Utilities` | Per-take and per-plane statistics: speed, path length, tilt from world Z, share above a robot limit, removed volume. | `Results`<br>`Robot Limit` (deg, default 30) | per take: `Frames`, `Duration`, `Path Length`, speeds, tilts, `% Above Limit`<br>per plane: `Plane Tilt`, `Plane Speed`, `Above Limit`<br>`Removed Volume`, `% of Stock`, `Summary` |
 | **Vive Calibration Recorder** | `Vive > TCP` | Point-by-point calibration recorder. Captures points on software button press or via physical tracker pogo pin switch. | `Data` (Plane or `TrackerData`)<br>`Record` (capture button)<br>`Reset` (clear button)<br>`Undo` (remove last button) | `Planes` (list of calibration planes)<br>`Points` (list of origin points)<br>`Tree` (DataTree `{point_idx}`)<br>`Count` (int) |
 
 ---
@@ -178,24 +179,37 @@ Calculates the Tool Center Point (tip) and fixed pivot point using least-squares
 
 ---
 
-### 5. Vive Take Recorder (`ViveTakes`)
-Records continuous trajectory takes while the tracker is inside a designated Brep working volume, or on a physical trigger switch press.
+### 5. Vive Take Recorder (`ViveTakes`) - now includes the Clay Viewer
+Records continuous takes of the plane wired into `Data` (feed it the **tool TCP plane**) while it is inside the working volume, or on a physical trigger press, and carves that same volume live in the external `ClayViewer.exe` with the live tool mesh. This component replaces the former separate *Vive Clay Viewer* component (old definitions still open; the old component is hidden and marked obsolete).
 
 - **Inputs**:
-  - `Data` (`D`, Tree): Tracker plane or `TrackerData` to record.
-  - `Brep` (`B`, Brep, optional): Working volume Brep. Recording automatically occurs while inside this volume.
-  - `Record` (`R`, bool, default `True`): Master recording switch.
-  - `Delay` (`Ms`, double, default `0`): Minimum milliseconds between recorded frames.
-  - `Tolerance` (`Tol`, double, default `0`): Minimum movement in mm to register a new frame.
-  - `Reset` (`Rst`, bool): Clears all recorded takes when set to True.
+  - `Data` (`D`, Tree): the plane to record, normally the TCP plane. A `TrackerData` payload supplies its plane only when no plane is given. Tilt, the viewer's recorded planes and all analytics use this plane.
+  - `Brep` (`B`, optional): working volume and carving stock: Box, closed Brep or closed Mesh. A box is carved as a box, anything else as a mesh. Recording happens while the Data plane is inside.
+  - `Record` (`R`, bool, default `True`): master recording switch.
+  - `Delay` (`Ms`, double, default `0`): minimum milliseconds between frames.
+  - `Tolerance` (`Tol`, double, default `0`): minimum movement in mm to register a new frame.
+  - `Reset` (`Rst`, bool): clears all recorded takes.
+  - `Tool` (`Tl`, Mesh, optional): tool mesh already placed in world by the `Vive Tracker` component. The first mesh is the tool reference, later meshes must be rigid copies of it. Carving is always on.
+- **Buttons on the component**: **Open Visualiser**, **Reset Stock**, **Get Mesh**, plus a status bubble below them. Carving resolution (0.25 / 0.5 / 1 mm) is in the right-click menu and is saved with the file.
 - **Outputs**:
-  - `Takes` (`T`, Tree): DataTree structured as `{ID_Device; ID_Take; Frame_Index}` storing `Plane`, `Trigger`, `TriggerValue`, and composite `TrackerData`.
-  - `TakeCount` (`N`, int): Number of completed takes recorded.
-  - `FrameCount` (`F`, int): Total number of frames recorded across all takes.
-  - `IsInside` (`In`, bool): True if the tracker origin is inside the working volume Brep.
-  - `Status` (`S`, string): Current recording status.
+  - `Takes` (`T`, Tree): planes only, one branch per take `{take}` (several devices: `{device;take}`), in recording order.
+  - `Take Count` (`N`), `Frame Count` (`F`), `Is Inside` (`In`), `Status` (`S`).
+  - `Carved Mesh` (`M`): the carved stock after pressing **Get Mesh** (document units).
+  - `Results` (`Res`): the takes (planes, times, triggers) and the viewer's job numbers (removed volume, stock volume, resolution); wire it to `Vive Take Analytics`.
 
-*(Right-click context menu: **"Require Trigger Button to Record"**, **"Clear All Takes"**)*
+*(Right-click context menu: **"Require Trigger Button to Record"**, **"Clear All Takes"**, **"Carving Resolution"**)*
+
+The viewer shows the recorded planes live (path, tilt, speed) and carves whatever the tool sweeps. `ClayViewer.exe` is found in a `ClayViewer` folder next to the `.gha`, or in `ClayViewer/publish-win-x64` in the repo.
+
+---
+
+### 5b. Vive Take Analytics (`TakeStats`, `Vive > Utilities`)
+Statistics of the recorded takes. Tilt is the angle between the recorded TCP plane's Z axis and world Z, from 0 (pointing up) to 180 degrees.
+
+- **Inputs**: `Results` (from the Take Recorder), `Robot Limit` (`Lim`, degrees, default 30).
+- **Outputs, one item per take**: `Frames`, `Duration` (s), `Path Length` (mm), `Mean Speed`, `Max Speed` (mm/s), `Tilt Min` / `Tilt Mean` / `Tilt Max` (deg), `% Above Limit` (share of planes steeper than the limit), `% Above Limit All` (overall).
+- **Outputs, per plane** (trees with the recorder's `Takes` paths): `Plane Tilt` (deg), `Plane Speed` (mm/s), `Above Limit` (bool flags).
+- **Job**: `Removed Volume` (mm3), `% of Stock`, and a text `Summary`.
 
 ---
 
@@ -219,8 +233,12 @@ Captures single calibration poses on a Grasshopper Button press (rising edge) or
 ### 7. Vive Plane Exchange (`PlaneX`)
 Pushes recorded planes to a GitHub data branch and pulls the partner site's planes, so a calibration recorded in France can be used in Austria (and the other way round). Runs in the background; no git install needed. Setup and tokens: [docs/PLANE_EXCHANGE.md](docs/PLANE_EXCHANGE.md).
 
-- **Inputs**: `Planes`, `Push` / `Pull` / `List` (buttons), `Site` (`france`), `Remote Site` (`austria`), `Name`, `Pull Name` (`latest`), `Repo` (`owner/name`), `Pull Repo` (optional), `Branch` (`plane-data`), `Token` (leave empty: run `set_exchange_token.ps1`), `Note`.
+- **Inputs**: `Planes`; `Site` (France / Austria: a Value List with both is created when you place the component; text `france` / `austria` works too, any case); `Push`, `Pull` (buttons); `Push Name` (empty = timestamp; `latest` is always written too); `Pull Name` (default `latest`).
+- **Folders**: Site France pushes to `france` and pulls from `austria`; Site Austria the reverse.
+- **Optional inputs, hidden by default**: `Repo` (`owner/name`), `Pull Repo`, `Branch` (`plane-data`), `Token` (leave empty: run `set_exchange_token.ps1`), `List` (button), `Note`. Zoom in on the component and click the **+** / **-** at its inputs to add or remove them (they are added in that order); the choice is saved with the file. Defaults are unchanged.
 - **Outputs**: `Pulled Planes` (scaled to the document units), `Info`, `Available`, `Status`.
+
+Definitions saved with the old 13-input version keep all their inputs (including `Remote Site`) and still work.
 
 ---
 

@@ -13,12 +13,11 @@ public sealed class TakeStats
 
 /// <summary>
 /// Analytics over one RecordedPlanes snapshot, computed on the render thread when a new snapshot arrives (at most 5 Hz).
-/// Tilt = angle between the tool axis (plane Z) and world Z, folded into 0..90 deg (the sign of the axis is irrelevant
-/// to the robot's reach, only its inclination).
+/// Tilt = angle between the tool axis (plane Z) and world Z, 0..180 deg (0 = plane Z points up along world Z).
 /// </summary>
 public sealed class PlaneAnalytics
 {
-    public const int Bins = 18;               // 5 deg bins, 0..90
+    public const int Bins = 18;               // 10 deg bins, 0..180
     public RecordedPlanesMsg Source = new();
     public Vector3[] Pos = Array.Empty<Vector3>();     // in Order
     public Vector3[] Axis = Array.Empty<Vector3>();    // in Order, flipped to point up (z >= 0)
@@ -43,9 +42,8 @@ public sealed class PlaneAnalytics
             var ax = new Vector3(m.Axis[3 * i], m.Axis[3 * i + 1], m.Axis[3 * i + 2]);
             var len = ax.Length();
             ax = len > 1e-9f ? ax / len : Vector3.UnitZ;
-            if (ax.Z < 0) ax = -ax;
             a.Axis[k] = ax;
-            a.Tilt[k] = MathF.Acos(Math.Clamp(ax.Z, 0f, 1f)) * 180f / MathF.PI;
+            a.Tilt[k] = MathF.Acos(Math.Clamp(ax.Z, -1f, 1f)) * 180f / MathF.PI;
             a.Time[k] = m.Time[i];
         }
 
@@ -88,7 +86,7 @@ public sealed class PlaneAnalytics
             foreach (var t in a.Tilt)
             {
                 sum += t;
-                a.Histogram[Math.Clamp((int)(t / 5f), 0, Bins - 1)]++;
+                a.Histogram[Math.Clamp((int)(t / 10f), 0, Bins - 1)]++;
                 a.Max = Math.Max(a.Max, t);
             }
             a.Mean = (float)(sum / n);

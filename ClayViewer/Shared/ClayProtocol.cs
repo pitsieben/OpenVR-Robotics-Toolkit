@@ -100,6 +100,8 @@ public sealed class PoseMsg : ClayMessage
     public double[] Matrix = new double[16];
     public double Timestamp;      // seconds, sender's clock (monotonic is fine)
     public bool CuttingEnabled = true;
+    /// <summary>Optional TCP plane Z axis (world). Appended to the frame; older readers ignore it.</summary>
+    public double[]? TcpAxis;
 }
 
 public sealed class ResetMsg : ClayMessage { public override MsgType Type => MsgType.Reset; }
@@ -160,6 +162,7 @@ public static class ClayWire
             case PoseMsg p:
                 for (var i = 0; i < 16; i++) w.Write(p.Matrix[i]);
                 w.Write(p.Timestamp); w.Write(p.CuttingEnabled);
+                if (p.TcpAxis is { Length: 3 }) for (var i = 0; i < 3; i++) w.Write(p.TcpAxis[i]);
                 break;
             case RecordedPlanesMsg rp:
                 w.Write(rp.Recording); w.Write(rp.CurrentTake); w.Write(rp.Count);
@@ -233,6 +236,7 @@ public static class ClayWire
                 var p = new PoseMsg();
                 for (var i = 0; i < 16; i++) p.Matrix[i] = r.ReadDouble();
                 p.Timestamp = r.ReadDouble(); p.CuttingEnabled = r.ReadBoolean();
+                if (r.BaseStream.Length - r.BaseStream.Position >= 24) p.TcpAxis = new[] { r.ReadDouble(), r.ReadDouble(), r.ReadDouble() };
                 return p;
             case MsgType.RecordedPlanes:
                 {
