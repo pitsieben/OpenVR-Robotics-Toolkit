@@ -1,361 +1,255 @@
 # OpenVR Robotics Toolkit
 
-Stream **HTC Vive Trackers and Lighthouse base stations** (via SteamVR / OpenVR) live into **Rhino 8 + Grasshopper** for robotics, digital fabrication, tool tracking, motion capture and workshop teaching.
+Stream **HTC Vive Trackers and Lighthouse base stations** (via SteamVR / OpenVR) live into **Rhino 8 + Grasshopper**. Record hand-held tool gestures, watch them carve a virtual clay brick in a live visualiser, analyse them for robot reproduction, and exchange the recorded planes between sites (France ⇄ Austria).
 
 ```
  Vive Tracker ──► SteamVR ──► ViveTcpPublisher.exe ──TCP :7000──► Grasshopper (Vive tab)
-                              (or dummy_sender.py for offline testing)
+                                                                    │
+                                     Vive Take Recorder ──pipe──► ClayViewer.exe (live carving + analytics)
+                                                                    │
+                                     Vive Plane Exchange ──HTTPS──► GitHub "plane-data" branch ◄── partner site
 ```
-
-Everything you need to run it is in this repository. **You don't need to compile anything.**
 
 | File | What it is |
 | :--- | :--- |
 | `ViveTcpRecorderV2.gha` | The Grasshopper plugin, ready to install |
-| `Grasshopper/ViveTracking_Template.gh` | Template definition with the components already wired |
-| `ViveTcpPublisher/publish-win-x64/ViveTcpPublisher.exe` | Standalone SteamVR → TCP streamer (doesn't need .NET installed) |
-| `dummy_sender.py` | Simulator that streams fake tracker data, so you can test without hardware |
+| `copy_gha_to_grasshopper.bat` | One-click installer (plugin + Clay Viewer) |
+| `Grasshopper/ViveTracking_Template.gh` | Template definition with the basic components wired |
+| `ViveTcpPublisher/publish-win-x64/ViveTcpPublisher.exe` | SteamVR → TCP streamer |
+| `ClayViewer/publish-win-x64/ClayViewer.exe` | External carving visualiser |
+| `ViveExchangeSetup/publish-win-x64/ViveExchangeSetup.exe` | Token and invite-link app for the plane exchange |
+| `dummy_sender.py` | Simulator that streams fake tracker data (no hardware) |
+
+> `ClayViewer.exe` and `ViveExchangeSetup.exe` are large and not stored in git. If those folders are empty after cloning, run `build_all.bat` once (needs the .NET 8 SDK), or copy them from a PC that has them.
 
 ---
 
-## Getting Started
+# Part A: Step-by-step workshop tutorial
 
-### 0. Requirements
+Follow the steps in order the first time. Later sessions start at **Step 3**.
 
-| Need | Live tracking | Offline simulator |
-| :--- | :---: | :---: |
-| Windows 10/11 (64-bit) | ✅ | ✅ |
-| Rhino 8 | ✅ | ✅ |
-| Steam + SteamVR | ✅ | — |
-| Vive Tracker (2.0 / 3.0) + dongle, 1–4 base stations | ✅ | — |
-| Python 3.8+ (standard library only) | — | ✅ |
+## Step 1. Install (once per PC)
 
-### 1. Download the repository
+Requirements: Windows 10/11 64-bit, Rhino 8, Steam + SteamVR, a Vive Tracker (2.0/3.0) with its dongle, and 1–4 base stations.
 
-Click **Code ▸ Download ZIP** on GitHub and extract it, or clone it:
+1. Get the repository: **Code ▸ Download ZIP** on GitHub (right-click the ZIP ▸ **Properties** ▸ tick **Unblock** *before* extracting), or:
+   ```bash
+   git clone https://github.com/pitsieben/OpenVR-Robotics-Toolkit.git
+   ```
+2. **Close Rhino completely.**
+3. Double-click **`copy_gha_to_grasshopper.bat`**. It copies the plugin to `%APPDATA%\Grasshopper\Libraries\` and the Clay Viewer to `%APPDATA%\Grasshopper\Libraries\ClayViewer\`.
+4. Start Rhino, type `Grasshopper`. A **Vive** tab appears in the ribbon. (No tab? Right-click the `.gha` in the Libraries folder ▸ Properties ▸ Unblock, restart Rhino.)
 
-```bash
-git clone https://github.com/pitsieben/OpenVR-Robotics-Toolkit.git
+Run the installer again every time you get a new version of the plugin.
+
+## Step 2. Prepare SteamVR (once per PC)
+
+1. **Pair the tracker:** start SteamVR, plug in the dongle, *SteamVR menu ▸ Devices ▸ Pair Controller*, hold the tracker's power button until the LED blinks blue.
+2. **No headset?** Close SteamVR, right-click **`enable_headless_trackers.ps1`** ▸ **Run with PowerShell**. SteamVR then runs without a headset. (`restore_steamvr_settings.ps1` undoes it. If scripts are blocked, run once: `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`.)
+
+## Step 3. Launch SteamVR and the stream (every session)
+
+1. Switch on the base stations, start **SteamVR**, switch on the tracker.
+2. Wait until the tracker icon in SteamVR is **solid** (not blinking) and its LED is **green**.
+3. Run **`ViveTcpPublisher\publish-win-x64\Launch_ViveTcpPublisher.bat`**:
+   - `[1]` lists connected devices and serial numbers,
+   - `[2]` streams all devices on `127.0.0.1:7000`.
+4. **Leave this window open** while you work.
+
+*No hardware?* Double-click `run_dummy_sender.bat` instead (needs Python on PATH). It streams one moving tracker and four base stations on port 7000.
+
+## Step 4. Live tracking in Grasshopper
+
+1. Open `Grasshopper/ViveTracking_Template.gh` (save a copy under a new name), or build it yourself:
+2. Place **Vive TCP Listener V2** (`Vive ▸ TCP`), wire a **Boolean Toggle** into `AutoUpdate`, set it to **True**. `Msg` should list your devices.
+3. Place **Vive Tracker** (`Vive ▸ Tracking Device`) and wire the listener's `Vive` output into it. `Index` 0 = first tracker.
+4. Optional: **Vive Lighthouse** components show the base stations (they number themselves LH1–LH4).
+5. **Tool mesh:** model your carving tool in Rhino in **millimetres**, placed so that the world origin `(0,0,0)` is the tracker's tracking centre. Reference it in a Mesh parameter and wire it into the tracker's `Mesh` input. The `Tracker` output now shows the tool moving live.
+
+```
+[Toggle True] ─► (AutoUpdate) [Vive TCP Listener V2] (Vive) ─► (Vive) [Vive Tracker] ─► Plane, Tracker (tool mesh), TrackerData
+[Tool mesh @ origin] ───────────────────────────────────────► (Mesh)
 ```
 
-> **ZIP download:** right-click the `.zip` ▸ **Properties** ▸ tick **Unblock** *before* you extract it. Otherwise Windows may block the `.gha` and `.exe`.
+## Step 5. Calibrate the TCP (tool tip)
 
-### 2. Install the Grasshopper plugin
+The **TCP plane** is the plane at the tip of the carving tool. Its **Z axis is the tool's direction reference**: tilt is always measured as the angle between this Z and world Z (0° = Z pointing straight up).
 
-1. Close Rhino.
-2. Double-click **`copy_gha_to_grasshopper.bat`**. It copies `ViveTcpRecorderV2.gha` into `%APPDATA%\Grasshopper\Libraries\`.
-   *(To do it by hand instead: in Grasshopper, open **File ▸ Special Folders ▸ Components Folder** and drop the `.gha` there.)*
-3. Start Rhino and type `Grasshopper`. A new **Vive** tab appears in the ribbon.
+1. Place **Vive Calibration Recorder** (`Vive ▸ TCP`). Wire the tracker's `TrackerData` into `Data`, and Grasshopper **Buttons** into `Record`, `Reset` and `Undo`.
+2. Put the tool tip in a fixed dimple and press **Record** at 4 or more clearly different tool angles. (With a pogo-pin switch on the tracker, pressing the switch records too.)
+3. Wire `Planes` into **Tool Center Point** (`Vive ▸ Calibration`). Check `Residual`: below ~1 mm is good; otherwise `Undo` / re-record.
+4. Build the TCP plane: move (and if needed re-orient) the tracker `Plane` by `TCP_Relative`, so the plane sits on the tip with its Z along the direction you want measured. Check it in the viewport: with the tool held in its "upright" pose the TCP plane's Z should point up.
 
-No Vive tab? Right-click the `.gha` in the Libraries folder ▸ **Properties** ▸ **Unblock**, then restart Rhino.
+```
+[Vive Tracker] (TrackerData) ─► (Data) [Vive Calibration Recorder] (Planes) ─► (Poses) [Tool Center Point] ─► TCP_Relative, Residual
+```
 
-### 3. Start a data stream
+## Step 6. Record takes and carve in the visualiser
 
-Choose **A** (real hardware) or **B** (no hardware).
+1. Place **Vive Take Recorder** (`Vive ▸ TCP`) and wire:
+   - `Data` ◄ your **TCP plane** (from Step 5),
+   - `Brep` ◄ the **brick / working volume** (a Box, closed Brep or closed Mesh, e.g. the 226.2 × 88 × 100 mm brick placed where the real brick is),
+   - `Tool` ◄ the tracker's `Tracker` output (the tool mesh already moved by the tracker),
+   - `Record` ◄ a Toggle (True = armed), `Reset` ◄ a Button.
+2. Click **Open Visualiser** on the component. `ClayViewer.exe` opens in its own window and shows the brick, the tool and its shadow.
+3. Carve: whenever the tool mesh passes through the brick it removes material, **always on**. Every time the TCP enters the brick a new **take** starts recording; leaving it ends the take. (Right-click ▸ **Require Trigger Button to Record** records only while the pogo-pin switch is held.)
+   ![Clay Viewer: carved brick, live readout, recorded takes and angularity](docs/images/viewer_overview.png)
+4. In the visualiser:
+   - **Mouse:** drag = orbit, right-drag / shift-drag = pan, wheel = zoom, double-click = fit.
+   - **Readout card:** removed volume, cut time, tool position, **tilt** (red above the robot limit), speed, recording state.
+   - **Bottom cards:** removed volume, X/Y/Z position graphs, tool speed, tool tilt with the limit line.
+   - **Sidebar:** recorded takes (select one to highlight its path), tilt histogram, layers, X-ray.
 
-#### A: Real Vive Trackers
+   ![Clay Viewer: Take 1 selected, its planes highlighted on the carved surface](docs/images/viewer_take.png)
+5. Buttons on the component:
+   - **Reset Stock** – a fresh brick (recorded takes are kept; use `Reset` to clear takes).
+   - **Get Mesh** – sends the carved brick back to Grasshopper on `Carved Mesh`. It is reduced to ~150 000 faces and smoothed, so it's light enough to bake.
+   - Right-click ▸ **Carving Resolution** (0.25 / 0.5 / 1 mm): finer = more detail, more memory.
+6. Outputs: `Takes` (**one branch per take**, planes in recording order), `Take Count`, `Frame Count`, `Is Inside`, `Status`, `Carved Mesh`, `Results`.
 
-1. **Pair the tracker (one time only):** start SteamVR and plug in the tracker dongle. Choose *SteamVR menu ▸ Devices ▸ Pair Controller*, then hold the tracker's power button until the LED blinks blue.
-2. **Track without a headset (optional):** close SteamVR. Right-click **`enable_headless_trackers.ps1`** ▸ **Run with PowerShell**. This turns on SteamVR's *null* driver, so SteamVR no longer requires a headset. To undo it later, run `restore_steamvr_settings.ps1`.
-   - If PowerShell won't run scripts, run this once: `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`
-3. Start SteamVR and switch on the base stations and the tracker. In SteamVR, the tracker icon must be **solid** (not blinking). The LED on the tracker must be **green**.
-4. Run **`ViveTcpPublisher\publish-win-x64\Launch_ViveTcpPublisher.bat`**:
-   - `[1]` lists the connected devices and their serial numbers.
-   - `[2]` streams every device on `127.0.0.1:7000`.
-   Leave this window open while you work.
+```
+[TCP plane] ─────────► (Data)
+[Brick Box] ─────────► (Brep)   [Vive Take Recorder]  ─► Takes {take}, Carved Mesh, Results
+[Tracker tool mesh] ─► (Tool)        [Open Visualiser] [Reset Stock] [Get Mesh]
+```
 
-To run it from the command line: `ViveTcpPublisher.exe [--serial SERIAL] [--host 127.0.0.1] [--port 7000] [--rate 90]`
+## Step 7. Analyse and clean the takes
 
-#### B: Offline simulator (no hardware)
+1. **Vive Take Analytics** (`Vive ▸ Utilities`): wire `Results` from the recorder, set `Robot Limit` (default 30°).
+   - Per take: frames, duration, path length, mean/max speed, tilt min/mean/max, % above limit.
+   - Per plane (same branches as `Takes`): tilt, speed, above-limit flags.
+   - Job: removed volume, % of stock, readable `Summary`.
+2. **Vive Take Smooth** (`Vive ▸ Utilities`): removes tracking jitter per take. `Position` / `Angle` are Gaussian strengths in frames (start with 3 / 5). Check `Position Change` / `Angle Change` so you don't over-smooth. `Spacing` resamples to equal distance for robot targets.
+3. **Vive Plane Straighten** (`Vive ▸ Utilities`): any plane steeper than `Max Tilt` from the `Reference` Z is rotated back to exactly that limit (positions never move). `Fix Roll` removes wrist twist.
 
-Double-click **`run_dummy_sender.bat`**. It simulates one moving tracker and four base stations on port 7000. For two trackers, use **`run_two_dummy_senders.bat`**.
-You need `python` on your PATH: install it from python.org and tick *Add Python to PATH* during setup.
+Typical chain: `Take Recorder (Takes)` ─► `Take Smooth` ─► `Plane Straighten` ─► robot targets. All of them keep one branch per take.
 
-### 4. Open the template
+## Step 8. Exchange planes with the partner site
 
-1. In Grasshopper, choose **File ▸ Open** ▸ `Grasshopper/ViveTracking_Template.gh`.
-2. Set the **AutoUpdate** toggle on the *Vive TCP Listener V2* to **True**.
-3. The listener's `Msg` output lists the connected devices. The tracker and the lighthouses show up in the Rhino viewport and move live.
+### 8a. One-time token setup
 
-Before you change the template, save a copy under a new name.
+The repo owner creates a fine-grained GitHub token (Contents: read & write on this repo only) — full instructions and the `main` protection rules are in [docs/PLANE_EXCHANGE.md](docs/PLANE_EXCHANGE.md). Then on each PC:
 
-### 5. Build your own definition from scratch
+1. Run **`ViveExchangeSetup\publish-win-x64\ViveExchangeSetup.exe`**.
+2. **My token** tab: paste the token ▸ *Check & save*. It is stored encrypted (Windows DPAPI) next to the installed plugin; nothing readable is written to disk or to your .gh file.
+3. To give the partner access: **Create invite** tab ▸ copy the `viveexchange://invite/...` link and its passphrase. **Send link and passphrase through two different channels** (e.g. link by email, passphrase by Signal/phone).
+4. The partner opens the link (or pastes it in **Accept invite**), types the passphrase, and is set up.
 
-1. Place **Vive TCP Listener V2** (`Vive ▸ TCP`). Connect a **Boolean Toggle** to `AutoUpdate` and set it to `True`.
-2. Place **Vive Tracker** (`Vive ▸ Tracking Device`). Wire the listener's `Vive` output to the tracker's `Vive` input. For more than one tracker, set `Index` to 0, 1, and so on.
-3. Optional: add **Vive Lighthouse** components. Each new one numbers itself automatically (LH1 to LH4).
-4. Use the tracker's `Plane` / `Matrix` outputs to drive geometry, robot targets and so on.
+*(Alternative: `set_exchange_token.ps1` stores a token the same way.)*
 
-### Troubleshooting
+### 8b. Push and pull from Grasshopper
 
-| Problem | Fix |
-| :--- | :--- |
-| No **Vive** tab in Grasshopper | Windows has blocked the `.gha`. Unblock it (see step 2) and restart Rhino. |
-| Listener says *not connected* | The publisher or simulator isn't running, or the port doesn't match. Check that `IP` is `127.0.0.1:7000`. |
-| Publisher lists no trackers | SteamVR isn't running, the tracker isn't paired, or the base stations can't see it (icon blinking). |
-| SteamVR asks for a headset | Close SteamVR and run `enable_headless_trackers.ps1`. |
-| `run_dummy_sender.bat` closes straight away | Python isn't installed or isn't on PATH. |
-| Port 7000 is already in use | Only one publisher or simulator can use a port. Close the other one, or pick another port with `--port`. |
-| The copy script fails | Rhino is still running. Close it completely and try again. |
+1. Place **Vive Plane Exchange**. A **Site** drop-down (France / Austria) appears automatically. Pick **your** site:
+   - **France** pushes to the `france` folder and pulls from `austria`,
+   - **Austria** pushes to `austria` and pulls from `france`.
+2. Wire your planes into `Planes` — e.g. the recorder's `Takes` or the smoothed/straightened tree. **The data-tree structure is kept**: 12 branches pushed come back as the same 12 branches.
+3. Optionally type a `Push Name` (empty = timestamp). Press the **Push** button. Every push is also saved as `latest`.
+4. On the other site, set `Pull Name` (default `latest`) and press **Pull**. `Pulled Planes` returns the tree, scaled to that document's units; `Info` shows site, name, time and units.
+5. Hidden extras: zoom in on the component and click **+** to add `Repo`, `Pull Repo`, `Branch` (default `plane-data`), `Token`, `List` (button: fills `Available` with the other site's set names) and `Note`. **Leave `Token` empty** — anything typed there is saved in the .gh file.
+
+```
+[Takes / smoothed tree] ─► (Planes)
+[Site: France]          ─► (Site)    [Vive Plane Exchange] ─► Pulled Planes (same tree), Info, Available, Status
+[Button] ─► (Push)   [Button] ─► (Pull)   "run-03" ─► (Push Name)   "latest" ─► (Pull Name)
+```
+
+## Step 9. End of session
+
+1. **Get Mesh** and bake the carved brick if you want to keep it; internalise or bake the `Takes`.
+2. Push the final takes (Step 8b) with a clear `Push Name`.
+3. Close the visualiser, the publisher window and SteamVR.
 
 ---
 
-## Grasshopper Component Suite Overview
+# Part B: Reference
 
-| Component | Ribbon Subcategory | Primary Role | Key Inputs | Key Outputs |
+## Component overview
+
+| Component | Ribbon | Role | Key inputs | Key outputs |
 | :--- | :--- | :--- | :--- | :--- |
-| **Vive TCP Listener V2** | `Vive > TCP` | Upstream network receiver; streams poses from publisher at a smooth, rate-limited 50 FPS. | `AutoUpdate` (bool)<br>`IP` (string, default: `127.0.0.1:7000`) | `Msg` (status text)<br>`Vive` (core context)<br>`Plane` (Rhino Z-up)<br>`Time` (timestamp) |
-| **Vive Tracker** | `Vive > Tracking Device` | Extracts live tracker pose, transforms custom tool meshes, and exposes trigger/pogo-pin states. | `Vive` (context)<br>`Index` (int, default `0`)<br>`Mesh` (custom tool geometry at `0,0,0`) | `Tracker` (3D geometry)<br>`Plane` (Z-up plane)<br>`Matrix` (4x4 Transform)<br>`TrackerData` (payload)<br>`Trigger` (bool) |
-| **Vive Lighthouse** | `Vive > Tracking Device` | Displays base station position, 3D model, and optical beam emission plane. Auto-increments from LH1 to LH4. | `Vive` (context)<br>`Index` (optional int override) | `Lighthouse` (3D geometry)<br>`Plane` (beam direction)<br>`Matrix` (4x4 Transform) |
-| **Tool Center Point** | `Vive > Calibration` | Calculates the tool tip ($p_F$) and stationary pivot point ($P_B$) from 4+ tracker poses using least-squares fitting. | `Poses` (list of at least 4 calibration planes) | `TCP_Relative` ($p_F$ in tool frame)<br>`TCP` (tip in world coordinates)<br>`FixedPoint` ($P_B$ world pivot)<br>`Residual` (RMS error in mm) |
-| **Vive Take Recorder** | `Vive > TCP` | Records takes of the TCP plane inside a Brep volume (or on trigger) and carves the same volume live in the external Clay Viewer. | `Data` (TCP plane)<br>`Brep` (working volume = stock)<br>`Record`, `Delay`, `Tolerance`, `Reset`<br>`Tool` (tracker-posed mesh) | `Takes` (one branch per take)<br>`Take Count`, `Frame Count`, `Is Inside`, `Status`<br>`Carved Mesh`<br>`Results` (for Take Analytics) |
-| **Vive Take Analytics** | `Vive > Utilities` | Per-take and per-plane statistics: speed, path length, tilt from world Z, share above a robot limit, removed volume. | `Results`<br>`Robot Limit` (deg, default 30) | per take: `Frames`, `Duration`, `Path Length`, speeds, tilts, `% Above Limit`<br>per plane: `Plane Tilt`, `Plane Speed`, `Above Limit`<br>`Removed Volume`, `% of Stock`, `Summary` |
-| **Vive Calibration Recorder** | `Vive > TCP` | Point-by-point calibration recorder. Captures points on software button press or via physical tracker pogo pin switch. | `Data` (Plane or `TrackerData`)<br>`Record` (capture button)<br>`Reset` (clear button)<br>`Undo` (remove last button) | `Planes` (list of calibration planes)<br>`Points` (list of origin points)<br>`Tree` (DataTree `{point_idx}`)<br>`Count` (int) |
+| **Vive TCP Listener V2** | `Vive ▸ TCP` | Receives the stream (50 FPS throttled) | `AutoUpdate`, `IP` (`127.0.0.1:7000`) | `Msg`, `Vive`, `Plane`, `Time` |
+| **Vive Tracker** | `Vive ▸ Tracking Device` | Tracker pose, tool mesh, buttons | `Vive`, `Index`, `Mesh` | `Tracker`, `Plane`, `Matrix`, `TrackerData`, `Trigger` |
+| **Vive Lighthouse** | `Vive ▸ Tracking Device` | Base station pose and beam plane | `Vive`, `Index` | `Lighthouse`, `Plane`, `Matrix` |
+| **Vive Calibration Recorder** | `Vive ▸ TCP` | Captures single poses for calibration | `Data`, `Record`, `Reset`, `Undo` | `Planes`, `Points`, `Tree`, `Count`, `Status` |
+| **Tool Center Point** | `Vive ▸ Calibration` | Least-squares tip / pivot fit (4+ poses) | `Poses` | `TCP_Relative`, `TCP`, `FixedPoint`, `Residual`, `Errors`, `Status` |
+| **Vive Take Recorder** | `Vive ▸ TCP` | Records takes + drives the Clay Viewer | `Data`, `Brep`, `Record`, `Delay`, `Tolerance`, `Reset`, `Tool` | `Takes`, `Take Count`, `Frame Count`, `Is Inside`, `Status`, `Carved Mesh`, `Results` |
+| **Vive Take Analytics** | `Vive ▸ Utilities` | Statistics per take / plane / job | `Results`, `Robot Limit` | speeds, tilts, flags, `Removed Volume`, `% of Stock`, `Summary` |
+| **Vive Take Smooth** | `Vive ▸ Utilities` | Jitter removal per take | `Planes`, `Position`, `Angle`, `Keep Ends`, `Spacing`, `Degree` | `Planes`, `Curve`, `Position Change`, `Angle Change`, `Status` |
+| **Vive Plane Straighten** | `Vive ▸ Utilities` | Clamp tilt to a robot limit | `Planes`, `Max Tilt`, `Reference`, `Flip Axis`, `Fix Roll` | `Planes`, `Tilt`, `Clamped`, `Status` |
+| **Vive Plane Exchange** | `Vive ▸ Utilities` | Push / pull plane trees via GitHub | `Planes`, `Site`, `Push`, `Pull`, `Push Name`, `Pull Name` (+ hidden extras) | `Pulled Planes`, `Info`, `Available`, `Status` |
 
----
+## Vive Take Recorder details
 
-## Detailed Component Specifications
+- `Data` (tree): the plane to record, normally the TCP plane. A `TrackerData` payload supplies its plane only when no plane is given. Tilt, the viewer's recorded planes and all analytics use this plane.
+- `Brep`: working volume **and** carving stock. A box is carved as a box, anything else as a mesh.
+- `Delay` (ms) / `Tolerance` (mm): minimum time / movement between recorded frames.
+- `Tool`: the tracker-posed tool mesh. The first mesh received is the reference; later ones must be rigid copies of it (otherwise a warning appears and carving pauses).
+- `Takes`: `{take}`, or `{device;take}` with several devices.
+- The viewer is found in a `ClayViewer` folder next to the `.gha`, or in `ClayViewer/publish-win-x64` in the repo.
+- Right-click: **Require Trigger Button to Record**, **Clear All Takes**, **Carving Resolution**.
 
-### 1. Vive TCP Listener V2 (`ViveListener`)
-Main upstream receiver connecting directly to `ViveTcpPublisher.exe` or `dummy_sender.py`. Includes an internal high-resolution throttle (50 FPS) to prevent Rhino viewport redraw lag.
+**Tilt** everywhere (viewer readout, histogram, Take Analytics) = angle between the TCP plane's Z axis and world Z, 0° (pointing up) to 180°.
 
-- **Inputs**:
-  - `AutoUpdate` (`A`, bool): Connect to a Toggle. Set to `True` to stream live tracking data.
-  - `IP` (`IP`, string, optional): Publisher endpoint (default: `127.0.0.1:7000`).
-- **Outputs**:
-  - `Msg` (`Msg`, string): Live connection info and summary of detected devices.
-  - `Vive` (`Vive`, Generic): Master tracking data context passed into `Tracker` and `Lighthouse` components.
-  - `Plane` (`Plane`, Plane): Real-time primary tracker plane with Rhino Z facing up.
-  - `Time` (`Time`, double): Stream timestamp in seconds.
+## Plane Exchange details
 
----
+- Files are written to `planes/<site>/<name>.json` and `planes/<site>/latest.json` on the `plane-data` branch. Each plane stores its Grasshopper branch path, so the tree comes back unchanged. Sets pushed by older versions (no paths) come back in branch `{0}`.
+- Token lookup order: `Token` input → env `VIVE_EXCHANGE_TOKEN` → `ViveExchange` folder next to the `.gha` → `%APPDATA%\Grasshopper\Libraries\ViveExchange` → `%APPDATA%\ViveExchange`.
+- Pulling from a public repo works without a token.
+- Nothing can be merged to `main` without the owner's approval (ruleset + `CODEOWNERS`); see [docs/PLANE_EXCHANGE.md](docs/PLANE_EXCHANGE.md).
+- Files saved with the old 13-input version keep all their inputs and still work.
 
-### 2. Vive Tracker (`Tracker`)
-Extracts the tracker plane, rigid transformation matrix, 3D geometry representation, custom tool meshes, and physical button/trigger data for any selected tracker index.
+## Physical trigger (pogo pins)
 
-- **Inputs**:
-  - `Vive` (`V`, Generic): Connect from the `Vive` output of `Vive TCP Listener`.
-  - `Index` (`I`, int, default `0`): Tracker index (`0` for first tracker, `1` for second, etc.).
-  - `Mesh` (`M`, Geometry, optional): Custom tool geometry modeled in Rhino at `(0, 0, 0)`.
-- **Outputs**:
-  - `Tracker` (`T`, Geometry): 3D model of the HTC Vive Tracker 3.0 or your transformed custom tool mesh.
-  - `Plane` (`P`, Plane): Rhino plane with **Z facing UP** out of the tracker dome (pre-rotated by 90° around X for direct viewport alignment).
-  - `Matrix` (`M`, Transform): 4x4 rigid transformation matrix from `Plane.WorldXY` to the tracker pose.
-  - `TrackerData` (`TD`, Generic): Composite data payload containing plane, trigger state, and button inputs for recorder components.
-  - `Trigger` (`Trig`, bool): Direct boolean state of the physical trigger switch connected to the tracker pogo pins.
-
-*(Right-click context menu: **Pause**)*
-
----
-
-### 3. Vive Lighthouse (`Lighthouse`)
-Extracts the pose, beam aiming direction, and 3D geometry of HTC Vive Lighthouse base stations.
-
-- **Auto-Incrementing Instances**: Every time you place a new `Vive Lighthouse` component onto the canvas, it automatically detects existing lighthouse components and assigns the next index (`Lighthouse1` -> `Lighthouse2` -> `Lighthouse3` -> `Lighthouse4`).
-- **Inputs**:
-  - `Vive` (`V`, Generic): Connect from the `Vive` output of `Vive TCP Listener`.
-  - `Index` (`I`, int, optional): Optional override index (`0` for LH1, `1` for LH2, `2` for LH3, `3` for LH4).
-- **Outputs**:
-  - `Lighthouse` (`L`, Geometry): 3D mesh model of the Lighthouse base station.
-  - `Plane` (`P`, Plane): Lighthouse plane with `Y` pointing in the optical beam emission direction and `Z` pointing up.
-  - `Matrix` (`M`, Transform): 4x4 rigid transformation matrix.
-
-*(Right-click context menu: **Pause**, **Select Lighthouse Device (LH 1..4)**)*
-
----
-
-### 4. Tool Center Point (`TCP`)
-Calculates the Tool Center Point (tip) and fixed pivot point using least-squares calibration from at least 4 flange/tracker poses touching a common stationary pivot tip from different angles.
-
-- **Inputs**:
-  - `Poses` (`P`, List of Plane): At least 4 diverse tracker poses touching the pivot tip at different orientations.
-- **Outputs**:
-  - `TCP_Relative` (`Rel`, Point3d): TCP position relative to the flange/tracker coordinate frame ($p_F$).
-  - `TCP` (`TCP`, Point3d): Tool Center Point in world coordinates for the first pose.
-  - `FixedPoint` (`Fix`, Point3d): Coordinates of the fixed calibration pivot point in the world frame ($P_B$).
-  - `Residual` (`R`, double): Root Mean Square (RMS) fitting error in millimetres.
-  - `Errors` (`E`, list of double): Individual fitting error for each pose in mm.
-  - `Status` (`S`, string): Calibration status text.
-
----
-
-### 5. Vive Take Recorder (`ViveTakes`) - now includes the Clay Viewer
-Records continuous takes of the plane wired into `Data` (feed it the **tool TCP plane**) while it is inside the working volume, or on a physical trigger press, and carves that same volume live in the external `ClayViewer.exe` with the live tool mesh. This component replaces the former separate *Vive Clay Viewer* component (old definitions still open; the old component is hidden and marked obsolete).
-
-- **Inputs**:
-  - `Data` (`D`, Tree): the plane to record, normally the TCP plane. A `TrackerData` payload supplies its plane only when no plane is given. Tilt, the viewer's recorded planes and all analytics use this plane.
-  - `Brep` (`B`, optional): working volume and carving stock: Box, closed Brep or closed Mesh. A box is carved as a box, anything else as a mesh. Recording happens while the Data plane is inside.
-  - `Record` (`R`, bool, default `True`): master recording switch.
-  - `Delay` (`Ms`, double, default `0`): minimum milliseconds between frames.
-  - `Tolerance` (`Tol`, double, default `0`): minimum movement in mm to register a new frame.
-  - `Reset` (`Rst`, bool): clears all recorded takes.
-  - `Tool` (`Tl`, Mesh, optional): tool mesh already placed in world by the `Vive Tracker` component. The first mesh is the tool reference, later meshes must be rigid copies of it. Carving is always on.
-- **Buttons on the component**: **Open Visualiser**, **Reset Stock**, **Get Mesh**, plus a status bubble below them. Carving resolution (0.25 / 0.5 / 1 mm) is in the right-click menu and is saved with the file.
-- **Outputs**:
-  - `Takes` (`T`, Tree): planes only, one branch per take `{take}` (several devices: `{device;take}`), in recording order.
-  - `Take Count` (`N`), `Frame Count` (`F`), `Is Inside` (`In`), `Status` (`S`).
-  - `Carved Mesh` (`M`): the carved stock after pressing **Get Mesh** (document units).
-  - `Results` (`Res`): the takes (planes, times, triggers) and the viewer's job numbers (removed volume, stock volume, resolution); wire it to `Vive Take Analytics`.
-
-*(Right-click context menu: **"Require Trigger Button to Record"**, **"Clear All Takes"**, **"Carving Resolution"**)*
-
-The viewer shows the recorded planes live (path, tilt, speed) and carves whatever the tool sweeps. `ClayViewer.exe` is found in a `ClayViewer` folder next to the `.gha`, or in `ClayViewer/publish-win-x64` in the repo.
-
----
-
-### 5b. Vive Take Analytics (`TakeStats`, `Vive > Utilities`)
-Statistics of the recorded takes. Tilt is the angle between the recorded TCP plane's Z axis and world Z, from 0 (pointing up) to 180 degrees.
-
-- **Inputs**: `Results` (from the Take Recorder), `Robot Limit` (`Lim`, degrees, default 30).
-- **Outputs, one item per take**: `Frames`, `Duration` (s), `Path Length` (mm), `Mean Speed`, `Max Speed` (mm/s), `Tilt Min` / `Tilt Mean` / `Tilt Max` (deg), `% Above Limit` (share of planes steeper than the limit), `% Above Limit All` (overall).
-- **Outputs, per plane** (trees with the recorder's `Takes` paths): `Plane Tilt` (deg), `Plane Speed` (mm/s), `Above Limit` (bool flags).
-- **Job**: `Removed Volume` (mm3), `% of Stock`, and a text `Summary`.
-
----
-
-### 6. Vive Calibration Recorder (`ViveCalib`)
-Captures single calibration poses on a Grasshopper Button press (rising edge) or directly via the physical pogo-pin trigger switch, with Undo and Reset functions.
-
-- **Inputs**:
-  - `Data` (`D`, Tree): Current tracker plane or `TrackerData`.
-  - `Record` (`R`, bool): Connect to a Grasshopper Button (captures on rising edge).
-  - `Reset` (`Rst`, bool): Connect to a Grasshopper Button (clears all points).
-  - `Undo` (`U`, bool, optional): Connect to a Grasshopper Button (removes the last captured point).
-- **Outputs**:
-  - `Planes` (`P`, List of Plane): List of recorded calibration planes (connect directly to the `Tool Center Point` component).
-  - `Points` (`Pt`, List of Point3d): List of origin points of recorded calibration planes.
-  - `Tree` (`T`, Tree): DataTree of all recorded frames structured as `{Point_Index}`.
-  - `Count` (`N`, int): Number of calibration points recorded.
-  - `Status` (`S`, string): Calibration recording status.
-
----
-
-### 7. Vive Plane Exchange (`PlaneX`)
-Pushes recorded planes to a GitHub data branch and pulls the partner site's planes, so a calibration recorded in France can be used in Austria (and the other way round). Runs in the background; no git install needed. Setup and tokens: [docs/PLANE_EXCHANGE.md](docs/PLANE_EXCHANGE.md).
-
-- **Inputs**: `Planes`; `Site` (France / Austria: a Value List with both is created when you place the component; text `france` / `austria` works too, any case); `Push`, `Pull` (buttons); `Push Name` (empty = timestamp; `latest` is always written too); `Pull Name` (default `latest`).
-- **Folders**: Site France pushes to `france` and pulls from `austria`; Site Austria the reverse.
-- **Optional inputs, hidden by default**: `Repo` (`owner/name`), `Pull Repo`, `Branch` (`plane-data`), `Token` (leave empty: run `set_exchange_token.ps1`), `List` (button), `Note`. Zoom in on the component and click the **+** / **-** at its inputs to add or remove them (they are added in that order); the choice is saved with the file. Defaults are unchanged.
-- **Outputs**: `Pulled Planes` (scaled to the document units), `Info`, `Available`, `Status`.
-
-Definitions saved with the old 13-input version keep all their inputs (including `Remote Site`) and still work.
-
----
-
-### 8. Vive Plane Straighten (`Straighten`, `Vive > Calibration`)
-Makes recorded planes easier for a robot to reproduce. Any plane whose tool axis leans more than `Max Tilt` away from `Up` is rotated back to exactly `Max Tilt`, with the smallest possible rotation about its own origin, so positions never move. Planes within the limit are left untouched.
-
-- **Inputs**: `Planes` (Take Recorder `Takes`, or one list of planes per branch), `Max Tilt` (deg, default 30; 0 = all upright), `Reference` (its Z = Up, its X = roll reference; default World XY), `Flip Axis` (use -Z as the tool axis), `Fix Roll` (remove twist about the tool axis).
-- **Outputs**: `Planes` (one branch per take), `Tilt` (original angle per plane), `Clamped` (true where straightened), `Status`.
-
----
-
-### 9. Vive Take Smooth (`Smooth`, `Vive > Calibration`)
-Removes tracking jitter per take, with separate control over position and angle. The smoothing is a centred Gaussian, so the path doesn't lag behind the recording. Orientation is averaged as quaternions, so the planes stay orthonormal.
-
-- **Inputs**: `Planes`, `Position` (sigma in frames, default 3, 0 = off), `Angle` (sigma in frames, default 5), `Keep Ends` (first and last plane stay exact), `Spacing` (resample to equal distance along the path, 0 = off), `Degree` (output curve: 1 = polyline, 3 = smooth).
-- **Outputs**: `Planes`, `Curve` (one per take), `Position Change` / `Angle Change` (largest correction per take, to check you aren't over-smoothing), `Status`.
-
-Typical chain: `Take Recorder` → `Take Smooth` → `Plane Straighten` → robot targets.
-
----
-
-## Tool Visualization and Custom Meshes
-
-You can attach a 3D model of your custom tool (gripper, welding head, stylus, camera mount) to the live tracker:
-
-1. Model your tool in Rhino in millimeters.
-2. Position the model at the Rhino origin `(0, 0, 0)` such that `(0, 0, 0)` aligns with the tracker's tracking center point.
-3. Reference your tool geometry with a Grasshopper **Mesh** or **Geometry** parameter.
-4. Connect it to the **`Mesh` (`M`)** input on the `Vive Tracker` component.
-5. The `Tracker` output will now transform and display your tool in real time.
-
----
-
-## Physical Trigger & Button Wiring (Pogo Pins)
-
-On the underside of the Vive Tracker are 6 gold contact pads (pogo pins). Connecting a pin to **Pin 2 (Ground)** registers a button click in SteamVR:
-
-```
-               [ 1/4"-20 Thread ]
-               (O)   (o) [Index Hole]
-  
-       [Pin 1] [Pin 2] [Pin 3] [Pin 4] [Pin 5] [Pin 6]
-         GPO     GND    Grip   Trigger  Trackpad  Menu
-```
+Six pads under the tracker; shorting a pin to **Pin 2 (GND)** registers a button:
 
 | Pin | Function | Wiring |
 | :--- | :--- | :--- |
-| **Pin 1** | GPO / Haptics | ~3.3V feedback output |
-| **Pin 2** | **Ground (GND)** | Connect to COM terminal of switch |
-| **Pin 3** | Grip Button | Active-low (short to Pin 2) |
-| **Pin 4** | **Trigger Button** | Connect to NO (Normally Open) terminal of switch |
-| **Pin 5** | Trackpad Click | Active-low (short to Pin 2) |
-| **Pin 6** | Menu Button | Active-low (short to Pin 2) |
+| 1 | GPO / haptics | ~3.3 V output |
+| **2** | **Ground** | switch COM |
+| 3 | Grip | short to pin 2 |
+| **4** | **Trigger** | switch NO |
+| 5 | Trackpad click | short to pin 2 |
+| 6 | Menu | short to pin 2 |
 
-### In Grasshopper:
-- **`Vive Tracker`**: The `Trigger` output outputs `True` when your switch is pressed.
-- **`Vive Take Recorder`**: Right-click the component and select **"Require Trigger Button to Record"** to record trajectory takes only while the switch is held down.
-- **`Vive Calibration Recorder`**: Connect `TrackerData` into `Data`. Clicking the physical switch automatically captures calibration points without using a mouse or keyboard.
+`Vive Tracker ▸ Trigger` is True while pressed; the Calibration Recorder records on a press (wire `TrackerData`); the Take Recorder can require it (right-click).
 
----
+## Troubleshooting
 
-## Typical Canvas Workflows
+| Problem | Fix |
+| :--- | :--- |
+| No **Vive** tab | Unblock the `.gha` (Properties ▸ Unblock) and restart Rhino. |
+| Listener *not connected* | Publisher / simulator not running, or wrong `IP` (should be `127.0.0.1:7000`). |
+| Publisher lists no trackers | SteamVR not running, tracker not paired, or base stations can't see it (icon blinking). |
+| SteamVR asks for a headset | Close SteamVR, run `enable_headless_trackers.ps1`. |
+| Port 7000 in use | Only one publisher/simulator per port; close the other or use `--port`. |
+| "Viewer not found" | Run `copy_gha_to_grasshopper.bat`, or `build_all.bat` if `ClayViewer/publish-win-x64` is empty. |
+| Nothing carves | Tool mesh not wired, or not a rigid copy of the first mesh (see the recorder warning). Press **Reset Stock** after changing the brick. |
+| Tilt looks wrong | Tilt follows the plane in `Data`: make sure it is the TCP plane with Z along your reference direction. |
+| Push: `401` / needs token | Token missing or expired: redo Step 8a. |
+| The copy script fails | Rhino is still running; close it completely. |
 
-### Live Tracking Workflow
-```
-[Toggle: True] ---> (AutoUpdate) [Vive TCP Listener V2]
-                                 (Vive) ----+-----> (Vive) [Vive Tracker] ---> Plane, Matrix, Model
-                                            |
-                                            +-----> (Vive) [Vive Lighthouse (LH1)] ---> Plane, Model
-                                            |
-                                            +-----> (Vive) [Vive Lighthouse (LH2)] ---> Plane, Model
-```
+## Building from source (developers)
 
-### TCP Calibration Workflow
-```
-[Vive Tracker] (TrackerData) ---> (Data) [Vive Calibration Recorder]
-[GH Button] --------------------> (Record)
-                                         (Planes) ---> (Poses) [Tool Center Point]
-                                                                (TCP_Relative) -> Point
-                                                                (Residual)     -> Error mm
-```
+Needs the **.NET 8 SDK** and **Rhino 8** in the default location. Run `build_all.bat`: it builds the plugin, then publishes `ViveTcpPublisher.exe`, `ClayViewer.exe` and `ViveExchangeSetup.exe` into their `publish-win-x64` folders. Copy the new `.gha` to the repo root to update the shipped one. For a different Rhino location pass `-p:RhinoSystemDir=... -p:GrasshopperDir=...`. `ClayViewer.exe --selftest` runs the carving checks. The TCP packet format is in [ViveTcpPublisher/README.md](ViveTcpPublisher/README.md).
 
----
-
-## Building from Source (developers)
-
-You need the **.NET 8 SDK** and **Rhino 8** in its default install location. Then run:
-
-```bash
-build_all.bat
-```
-
-This builds the plugin to `ViveGrasshopperRecorder\bin\Release\net7.0-windows\ViveTcpRecorderV2.gha`. It also publishes a self-contained `ViveTcpPublisher.exe` to `ViveTcpPublisher\publish-win-x64\`. If Rhino is installed somewhere else, pass `-p:RhinoSystemDir=... -p:GrasshopperDir=...` to `dotnet build`. To update the plugin that ships with the repo, copy the new `.gha` to the repo root.
-
-[ViveTcpPublisher/README.md](ViveTcpPublisher/README.md) documents the TCP packet format.
-
-## Repository Structure
+## Repository structure
 
 ```
 ├── ViveTcpRecorderV2.gha            # Grasshopper plugin, ready to install
-├── copy_gha_to_grasshopper.bat      # One-click plugin installer
-├── Grasshopper/
-│   └── ViveTracking_Template.gh     # Starter Grasshopper definition
-├── ViveTcpPublisher/                # SteamVR/OpenVR → TCP streamer (C#)
-│   └── publish-win-x64/
-│       ├── Launch_ViveTcpPublisher.bat
-│       └── ViveTcpPublisher.exe     # Self-contained; doesn't need .NET installed
-├── ViveGrasshopperRecorder/         # Grasshopper plugin source (C#)
-├── enable_headless_trackers.ps1     # Lets SteamVR track without a headset
-├── restore_steamvr_settings.ps1     # Undoes the headless setup
-├── dummy_sender.py                  # Offline simulator
-├── run_dummy_sender.bat             # 1 simulated tracker
-├── run_two_dummy_senders.bat        # 2 simulated trackers
-└── build_all.bat                    # Developer build script
+├── copy_gha_to_grasshopper.bat      # Installer (plugin + Clay Viewer)
+├── Grasshopper/ViveTracking_Template.gh
+├── ViveTcpPublisher/                # SteamVR → TCP streamer
+├── ViveGrasshopperRecorder/         # Plugin source (C#)
+├── ClayViewer/                      # Carving visualiser (Silk.NET OpenGL + ImGui)
+├── ViveExchangeSetup/               # Token / invite app
+├── docs/PLANE_EXCHANGE.md           # Exchange setup, tokens, main protection
+├── set_exchange_token.ps1           # Token by script (alternative to the app)
+├── enable_headless_trackers.ps1 / restore_steamvr_settings.ps1
+├── dummy_sender.py, run_dummy_sender.bat, run_two_dummy_senders.bat
+└── build_all.bat
 ```
 
-## License & Credits
+## License & credits
 
-- Uses the Valve OpenVR SDK (`openvr_api.dll`). See [THIRD_PARTY_NOTICES](ViveTcpPublisher/THIRD_PARTY_NOTICES.md).
+- Uses the Valve OpenVR SDK (`openvr_api.dll`), see [THIRD_PARTY_NOTICES](ViveTcpPublisher/THIRD_PARTY_NOTICES.md).
 - Rhino and Grasshopper are registered trademarks of Robert McNeel & Associates.

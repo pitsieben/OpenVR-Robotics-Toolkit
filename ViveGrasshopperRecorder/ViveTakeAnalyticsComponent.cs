@@ -42,7 +42,7 @@ public sealed class ViveTakeAnalyticsComponent : GH_Component
         p.AddNumberParameter("Path Length", "Len", "Path length per take in mm.", GH_ParamAccess.list);
         p.AddNumberParameter("Mean Speed", "Vavg", "Path length / duration per take in mm/s.", GH_ParamAccess.list);
         p.AddNumberParameter("Max Speed", "Vmax", "Fastest segment per take in mm/s.", GH_ParamAccess.list);
-        p.AddNumberParameter("Tilt Min", "TMin", "Smallest tilt per take: angle between the plane's Z axis and world Z, 0 to 90 degrees.", GH_ParamAccess.list);
+        p.AddNumberParameter("Tilt Min", "TMin", "Smallest tilt per take: angle between the plane's Z axis and world Z, 0 (pointing up) to 180 degrees.", GH_ParamAccess.list);
         p.AddNumberParameter("Tilt Mean", "TAvg", "Mean tilt per take in degrees.", GH_ParamAccess.list);
         p.AddNumberParameter("Tilt Max", "TMax", "Largest tilt per take in degrees.", GH_ParamAccess.list);
         p.AddNumberParameter("% Above Limit", "%>", "Percentage of planes above Robot Limit, per take.", GH_ParamAccess.list);
