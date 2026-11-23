@@ -33,12 +33,19 @@ if (-not $SkipBuild) {
     )
     foreach ($a in $apps) {
         Step "Publishing $($a.Name)"
-        dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o "$($a.Name)\publish-win-x64" $a.Proj
+        # publish into dist\_build so a running copy of the program can't lock the output
+        $out = Join-Path $root "dist\_build\$($a.Name)"
+        if (Test-Path $out) { Remove-Item $out -Recurse -Force }
+        dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o $out $a.Proj
         if ($LASTEXITCODE) { throw "$($a.Name) publish failed." }
+        # refresh the repo copy too, unless the program is running
+        $dest = Join-Path $root "$($a.Name)\publish-win-x64"
+        try { Get-ChildItem $out -File | Where-Object { $_.Extension -ne ".pdb" } | Copy-Item -Destination $dest -Force -ErrorAction Stop }
+        catch { Write-Host "  ($($a.Name) is running: repo copy in $dest not refreshed, the ZIP still gets the new build)" -ForegroundColor Yellow }
     }
 
     Step "Clay Viewer self-test"
-    & "ClayViewer\publish-win-x64\ClayViewer.exe" --selftest | Select-Object -Last 3
+    & "dist\_build\ClayViewer\ClayViewer.exe" --selftest | Select-Object -Last 3
 }
 
 # ---------------------------------------------------------------- stage
@@ -82,6 +89,10 @@ Get-ChildItem "ViveTcpPublisher\publish-win-x64\*.dll" -ErrorAction SilentlyCont
 $missing = @()
 foreach ($rel in $files.Keys) {
     $src = Join-Path $root $rel
+    if ($rel -match '^(ViveTcpPublisher|ClayViewer|ViveExchangeSetup)\\publish-win-x64\\(.+)$') {
+        $fresh = Join-Path $root "dist\_build\$($Matches[1])\$($Matches[2])"
+        if (Test-Path $fresh) { $src = $fresh }
+    }
     if (-not (Test-Path $src)) {
         if ($files[$rel]) { $missing += $rel } else { Write-Host "  (optional, skipped) $rel" -ForegroundColor DarkGray }
         continue
