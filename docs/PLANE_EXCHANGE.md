@@ -1,20 +1,67 @@
-# Plane Exchange (France ⇄ Austria)
+# Plane Exchange (France ⇄ Austria / Linz)
 
-The **Vive Plane Exchange** component (`Vive > TCP`) uploads recorded planes as JSON to a GitHub branch and downloads the partner's planes with one click.
+The **Vive Plane Exchange** component (`Vive ▸ Utilities`) sends recorded planes from one site to the other through a GitHub branch. Each site **pushes** into its own folder and **pulls** from the partner's folder. No git install is needed, just internet access and a token stored on the PC.
 
 ```
+GitHub repo pitsieben/OpenVR-Robotics-Toolkit, branch "plane-data"
 planes/
-  france/   latest.json, 2026-11-23_calib-A.json, ...
-  austria/  latest.json, ...
+  france/    latest.json, run-03.json, 2026-11-24_10-15-02.json, ...
+  austria/   latest.json, ...
 ```
 
-Each file stores site, name, UTC time, Rhino units and the planes (origin, X axis, Y axis). On pull, coordinates are scaled to the current document's units.
+---
 
-## Wiring
+## Quick start for the partner site (Linz / Austria)
 
-`Vive Calibration Recorder.Planes` → `Planes`. Add Buttons to `Push`, `Pull` and `List`. Set `Site` to your own site and `Remote Site` to the partner's. `Pulled Planes` can go straight into your 3-point calibration / Orient.
+You need: Rhino 8 on Windows, internet access, the release ZIP (or the repo), and an **invite link + passphrase** from the France team (sent over two different channels).
 
-Push writes `<Site>/<Name>.json` **and** `<Site>/latest.json`. If `Name` is empty, a timestamp is used. Pull reads `<Remote Site>/<Pull Name>.json` (by default `latest`).
+### 1. Install (once)
+1. Right-click the ZIP ▸ **Properties** ▸ **Unblock**, then extract it.
+2. Close Rhino and double-click **`copy_gha_to_grasshopper.bat`**.
+
+### 2. Store the token (once per PC and Windows user)
+1. Run **`ViveExchangeSetup\publish-win-x64\ViveExchangeSetup.exe`** once.
+2. Click the invite link you received. It opens the app (or paste it into the **Accept invite** tab).
+3. Type the passphrase ▸ **Accept**. The app checks the token with GitHub and saves it encrypted on this PC. You never type the token into Grasshopper.
+
+### 3. Place the component
+1. In Grasshopper, place **Vive Plane Exchange** (`Vive ▸ Utilities`).
+2. A **Site** drop-down appears next to it. Set it to **Austria**. You will then push to `austria/` and pull from `france/`.
+3. Wire Grasshopper **Buttons** into `Push` and `Pull`.
+
+### 4. Receive planes from France
+1. Leave `Pull Name` at `latest` (or type a set name, e.g. `run-03`).
+2. Press **Pull**. `Pulled Planes` gives the planes **in the same data-tree branches France pushed** (e.g. one branch per take), already scaled to your document units.
+3. `Info` shows the set name, when it was recorded, its units and any note.
+4. Not sure which names exist? Zoom in on the component, click **+** until the `List` input appears, wire a Button and press it. `Available` lists France's sets.
+
+### 5. Send planes to France
+1. Wire your planes (a list or a tree) into `Planes`. Branches are kept.
+2. Type a `Push Name` (e.g. `linz-run-01`). Empty uses a timestamp.
+3. Press **Push**. The set is saved as `austria/<name>.json` **and** as `austria/latest.json`, so France gets it with a plain Pull.
+4. Optional: add the `Note` input with **+** to send a short description along.
+
+### 6. Check it worked
+`Status` reports every action, e.g. `Pushed 154 planes to …:planes/austria/linz-run-01.json`. Push and pull run in the background, so the canvas never freezes. If something fails, see **Status messages** at the end of this page.
+
+### Good practice between the sites
+- Use clear, unique **Push Names** (`linz-run-01`, `linz-run-02` …). `latest` is overwritten by every push; named sets stay.
+- Agree on units: both documents in **millimetres** is simplest (other units are converted automatically).
+- Agree on the **reference frame**: planes are sent in world coordinates of the sender's document. Both sites should place their brick / work surface at the same world position, or re-orient the pulled planes (e.g. with Orient) from the sender's brick plane to yours.
+- Nothing is ever deleted: every push stays in the branch history and can be restored.
+
+---
+
+## Component reference
+
+- **Visible inputs:** `Planes` (tree), `Site` (France / Austria), `Push`, `Pull` (buttons), `Push Name`, `Pull Name` (default `latest`).
+- **Hidden inputs** (zoom in, click **+** / **-**): `Repo` (default `pitsieben/OpenVR-Robotics-Toolkit`), `Pull Repo` (when the partner uses its own data repo), `Branch` (default `plane-data`), `Token` (**leave empty**: anything typed here is saved inside the .gh file), `List` (button), `Note`.
+- **Outputs:** `Pulled Planes` (tree), `Info`, `Available`, `Status`.
+- **File format:** JSON with site, name, UTC time, Rhino units, note and per plane its origin, X axis, Y axis and Grasshopper branch path. Sets pushed by older plugin versions have no branch paths and come back in branch `{0}`.
+
+---
+
+# Owner setup (France, once)
 
 ## 1. Protect `main` (do this once, as repo owner)
 
@@ -49,7 +96,7 @@ Run **`ViveExchangeSetup\publish-win-x64\ViveExchangeSetup.exe`**. It has three 
 
 - **My token:** paste your token and click *Check & save*. The app asks GitHub whether the token can read and write the repo, then saves it encrypted on this PC (same place and format as below).
 - **Create invite:** makes an encrypted `viveexchange://invite/...` link for a partner, now or later. Leave the token box empty to share the token saved on this PC. A passphrase is generated for you. **Send the link and the passphrase over two different channels** (for example, the link by email and the passphrase by phone or Signal). The link alone is useless.
-- **Accept invite:** clicking the link opens the app, if it has been run once on that PC. Otherwise paste the link, type the passphrase and accept. The app checks the token with GitHub, saves it encrypted, and tells you which Site / Remote Site / Repo to enter in Grasshopper.
+- **Accept invite:** clicking the link opens the app, if it has been run once on that PC. Otherwise paste the link, type the passphrase and accept. The app checks the token with GitHub, saves it encrypted, and tells you which Site to pick in Grasshopper.
 
 The link carries the token, repo, branch and site names. It's encrypted with AES-256-GCM, with a key derived from the passphrase (PBKDF2-SHA256, 300,000 rounds). A wrong passphrase or an edited link is rejected. An invite can't be revoked; to cut someone off, delete that token on GitHub. One token per site means you only cut off that site.
 

@@ -20,6 +20,16 @@ Stream **HTC Vive Trackers and Lighthouse base stations** (via SteamVR / OpenVR)
 | `ViveExchangeSetup/publish-win-x64/ViveExchangeSetup.exe` | Token and invite-link app for the plane exchange |
 | `dummy_sender.py` | Simulator that streams fake tracker data (no hardware) |
 
+## Exchanging planes with the partner site (France ⇄ Linz)
+
+Recorded planes travel between the sites through the **Vive Plane Exchange** component (`Vive ▸ Utilities`):
+
+1. **Once per PC:** open the invite link from the France team, type the passphrase in `ViveExchangeSetup.exe`, done. The token is stored encrypted on the PC.
+2. **Place the component**, set the **Site** drop-down to your own site (Linz = **Austria**), wire Buttons into `Push` and `Pull`.
+3. **Pull** gets the partner's latest set (`Pull Name` = `latest`), with the same data-tree branches it was pushed with. **Push** sends your `Planes` under a `Push Name`.
+
+Step-by-step guide for the partner site: **[docs/PLANE_EXCHANGE.md](docs/PLANE_EXCHANGE.md)** · full workflow: [Step 8](#step-8-exchange-planes-with-the-partner-site).
+
 > `ClayViewer.exe` and `ViveExchangeSetup.exe` are large and not stored in git. If those folders are empty after cloning, run `build_all.bat` once (needs the .NET 8 SDK), or copy them from a PC that has them.
 
 ---
